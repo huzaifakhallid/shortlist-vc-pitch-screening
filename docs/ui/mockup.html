@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shortlist UI Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* Static reference only. Values mirror .claude/skills/ui-design-system/tokens.css. */
+  :root {
+    --background:#ffffff; --foreground:#1a1a1a; --primary:#cc4709; --primary-hover:#b83d0a;
+    --muted:#f6f5f2; --muted-foreground:#6b6660; --accent:#f1efea; --border:#e7e4de; --input:#dcd8d0;
+    --brand:#ea580c; --brand-soft:#fff3eb; --subtle:#fafaf8; --faint:#79736b;
+    --success:#15803d; --success-soft:#ecfdf3; --warning:#a16207; --warning-soft:#fef6e4;
+    --danger:#b91c1c; --danger-soft:#fef2f2; --radius:6px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Inter, ui-sans-serif, system-ui, sans-serif; font-size:14px; line-height:1.5; color:var(--foreground); background:#ecebe7; -webkit-font-smoothing:antialiased; }
+  .tabular { font-variant-numeric:tabular-nums; }
+  .label { max-width:1280px; margin:32px auto 8px; padding:0 4px; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-foreground); }
+  .screen { width:1280px; margin:0 auto 24px; background:var(--background); border:1px solid var(--border); }
+
+  /* nav */
+  .nav { height:56px; border-bottom:1px solid var(--border); }
+  .nav .in { max-width:1152px; height:100%; margin:0 auto; padding:0 24px; display:flex; align-items:center; gap:32px; }
+  .logo { font-weight:700; font-size:16px; display:flex; align-items:center; gap:6px; letter-spacing:-.01em; }
+  .logo i { width:8px; height:8px; border-radius:2px; background:var(--brand); display:inline-block; }
+  .links { display:flex; gap:24px; height:100%; }
+  .links a { display:flex; align-items:center; gap:6px; height:100%; color:var(--muted-foreground); text-decoration:none; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .links a.on { color:var(--foreground); border-color:var(--brand); }
+  .count { font-size:11px; font-weight:600; background:var(--muted); color:var(--foreground); border-radius:999px; padding:0 6px; }
+  .who { margin-left:auto; display:flex; align-items:center; gap:10px; color:var(--muted-foreground); }
+  .av { width:28px; height:28px; border-radius:999px; background:var(--muted); display:grid; place-items:center; font-size:12px; font-weight:600; color:var(--foreground); }
+
+  .page { max-width:1152px; margin:0 auto; padding:32px 24px 40px; }
+  h1 { font-size:24px; font-weight:600; letter-spacing:-.02em; }
+  .sub { color:var(--muted-foreground); margin-top:2px; }
+  .head { display:flex; align-items:flex-end; gap:16px; margin-bottom:24px; }
+  .head .actions { margin-left:auto; display:flex; gap:8px; }
+
+  .btn { font:inherit; font-weight:500; border-radius:var(--radius); padding:7px 14px; border:1px solid var(--input); background:#fff; color:var(--foreground); cursor:pointer; white-space:nowrap; }
+  .btn.primary { background:var(--primary); border-color:var(--primary); color:#fff; }
+  .btn.ghost { border-color:transparent; background:transparent; color:var(--muted-foreground); }
+  .btn.sm { padding:4px 10px; font-size:13px; }
+  .search { width:280px; border:1px solid var(--input); border-radius:var(--radius); padding:7px 12px; color:var(--faint); }
+
+  .tag { display:inline-flex; align-items:center; border:1px solid var(--border); background:var(--subtle); border-radius:999px; padding:1px 8px; font-size:12px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; color:var(--muted-foreground); }
+  .meta { font-size:12px; color:var(--faint); }
+  .flag { font-size:12px; font-weight:500; color:var(--danger); display:inline-flex; align-items:center; gap:4px; }
+
+  /* deals */
+  .layout { display:flex; gap:40px; }
+  .side { width:240px; flex-shrink:0; }
+  .side h4 { font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); margin:20px 0 8px; }
+  .side h4:first-child { margin-top:4px; }
+  .check { display:flex; align-items:center; gap:8px; padding:3px 0; }
+  .box { width:15px; height:15px; border:1px solid var(--input); border-radius:4px; background:#fff; flex-shrink:0; }
+  .box.on { background:var(--primary); border-color:var(--primary); position:relative; }
+  .box.on::after { content:""; position:absolute; left:4px; top:1px; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+  .check .n { margin-left:auto; color:var(--faint); font-size:12px; }
+  .main { flex:1; min-width:0; }
+  .tabs { display:flex; gap:24px; border-bottom:1px solid var(--border); margin-bottom:4px; }
+  .tabs a { padding:8px 0; color:var(--muted-foreground); font-weight:500; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs a.on { color:var(--foreground); border-color:var(--brand); }
+  .tabs a span { color:var(--faint); font-weight:400; margin-left:4px; }
+  .row { display:flex; gap:16px; padding:20px 12px; margin:0 -12px; border-bottom:1px solid var(--border); border-radius:6px; }
+  .row:hover, .row.hover { background:var(--accent); }
+  .logo-sq { width:44px; height:44px; border-radius:6px; border:1px solid var(--border); background:var(--subtle); display:grid; place-items:center; font-weight:600; font-size:16px; color:var(--muted-foreground); flex-shrink:0; }
+  .row .body { flex:1; min-width:0; }
+  .row .name { font-size:16px; font-weight:600; }
+  .row .loc { color:var(--faint); font-weight:400; font-size:13px; margin-left:8px; }
+  .row .one { color:var(--muted-foreground); margin:2px 0 8px; }
+  .row .tags { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .score { text-align:center; flex-shrink:0; width:72px; }
+  .pill { display:inline-block; min-width:44px; border-radius:6px; padding:4px 8px; font-size:16px; font-weight:600; }
+  .good { background:var(--success-soft); color:var(--success); }
+  .mid { background:var(--warning-soft); color:var(--warning); }
+  .low { background:var(--danger-soft); color:var(--danger); }
+  .score .meta { margin-top:2px; }
+  .right-meta { width:110px; text-align:right; flex-shrink:0; }
+
+  /* deal page */
+  .crumb { color:var(--faint); font-size:13px; margin-bottom:16px; }
+  .crumb b { color:var(--muted-foreground); font-weight:500; }
+  .dealhead { display:flex; gap:16px; align-items:flex-start; padding-bottom:20px; border-bottom:1px solid var(--border); }
+  .dealhead .logo-sq { width:56px; height:56px; font-size:20px; }
+  .dealhead h1 { font-size:24px; }
+  .grid { display:grid; grid-template-columns:7fr 5fr; gap:32px; margin-top:20px; }
+  .banner { border:1px solid #f3cccc; background:var(--danger-soft); color:var(--danger); border-radius:6px; padding:10px 14px; display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+  .banner .btn { margin-left:auto; }
+  .aimeta { display:flex; gap:8px; align-items:center; margin:12px 0 4px; }
+  .ai { font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; background:var(--muted); border-radius:4px; padding:1px 6px; color:var(--muted-foreground); }
+  h3 { font-size:16px; font-weight:600; margin:20px 0 6px; }
+  p.memo { color:var(--foreground); }
+  .cite { display:inline-flex; border:1px solid var(--border); border-radius:4px; padding:0 5px; font-size:12px; font-weight:500; color:var(--primary); margin-left:3px; background:#fff; }
+  .cite.on { background:var(--brand-soft); border-color:#f7c9a9; }
+  .crit { display:grid; grid-template-columns:120px 52px 1fr; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); align-items:start; }
+  .crit:last-child { border-bottom:0; }
+  .crit .k { font-weight:600; }
+  .crit .s { font-weight:600; }
+  .crit .why { color:var(--muted-foreground); }
+  .panel { border:1px solid var(--border); border-radius:8px; }
+  .panel .ph { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; background:var(--subtle); border-radius:8px 8px 0 0; }
+  .panel .ph b { font-weight:600; }
+  .panel .ph .meta { margin-left:auto; }
+  .slide { margin:16px; border:1px solid var(--border); border-radius:6px; aspect-ratio:16/9; padding:20px 22px; position:relative; background:#fff; }
+  .slide .st { font-size:15px; font-weight:700; }
+  .slide .ss { font-size:11px; color:var(--muted-foreground); margin-top:2px; }
+  .bars { position:absolute; left:22px; right:22px; bottom:22px; height:58%; display:flex; align-items:flex-end; gap:8px; border-bottom:1px solid var(--border); }
+  .bars div { flex:1; background:#d8d4cc; border-radius:3px 3px 0 0; }
+  .bars div:last-child { background:#9a948c; }
+  .hl { position:absolute; right:18px; top:16px; background:var(--brand-soft); border:1px solid #f7c9a9; border-radius:4px; padding:3px 8px; font-size:12px; font-weight:600; }
+  .thumbs { display:flex; gap:8px; padding:0 16px 16px; }
+  .thumbs div { flex:1; aspect-ratio:16/9; border:1px solid var(--border); border-radius:4px; background:var(--subtle); font-size:10px; color:var(--faint); padding:3px 5px; }
+  .thumbs div.on { border:2px solid var(--brand); }
+
+  /* agents */
+  .narrow > * { max-width:800px; }
+  .agent { display:flex; gap:16px; align-items:center; padding:18px 0; border-bottom:1px solid var(--border); }
+  .agent .body { flex:1; }
+  .agent .nm { font-weight:600; font-size:15px; }
+  .agent .job { color:var(--muted-foreground); }
+  .sw { width:36px; height:20px; border-radius:999px; background:var(--input); position:relative; flex-shrink:0; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  .sw.on { background:var(--brand); }
+  .sw.on::after { left:18px; }
+  .dep { font-size:12px; color:var(--faint); }
+  .status { font-size:12px; font-weight:500; display:inline-flex; align-items:center; gap:5px; }
+  .dot { width:6px; height:6px; border-radius:999px; display:inline-block; }
+
+  /* approvals */
+  .appr { padding:18px 0; border-bottom:1px solid var(--border); display:flex; gap:20px; }
+  .appr .body { flex:1; }
+  .appr .to { font-weight:600; }
+  .draft { color:var(--muted-foreground); margin-top:6px; border-left:2px solid var(--border); padding-left:12px; }
+  .appr .acts { display:flex; gap:6px; align-items:flex-start; }
+</style>
+</head>
+<body>
+
+<!-- ======================= DEALS ======================= -->
+<div class="label">01 · Deals (directory-style list)</div>
+<section class="screen" id="deals">
+  <div class="nav"><div class="in">
+    <div class="logo"><i></i>Shortlist</div>
+    <nav class="links"><a class="on" href="#">Deals</a><a href="#">Approvals <span class="count">3</span></a><a href="#">Agents</a><a href="#">Settings</a></nav>
+    <div class="who">Kestrel Ventures <span class="av">AR</span></div>
+  </div></div>
+  <div class="page">
+    <div class="head">
+      <div><h1>Deals</h1><div class="sub">148 pitches this week · 12 shortlisted · 61 outside your focus</div></div>
+      <div class="actions"><div class="search">Search companies or founders</div><button class="btn primary">Upload deck</button></div>
+    </div>
+    <div class="layout">
+      <aside class="side">
+        <h4>Stage</h4>
+        <div class="check"><span class="box on"></span>Pre-seed<span class="n">41</span></div>
+        <div class="check"><span class="box on"></span>Seed<span class="n">52</span></div>
+        <div class="check"><span class="box"></span>Series A<span class="n">18</span></div>
+        <h4>Sector</h4>
+        <div class="check"><span class="box"></span>Fintech<span class="n">34</span></div>
+        <div class="check"><span class="box"></span>Climate<span class="n">19</span></div>
+        <div class="check"><span class="box"></span>Developer tools<span class="n">22</span></div>
+        <h4>Country</h4>
+        <div class="check"><span class="box"></span>Pakistan<span class="n">47</span></div>
+        <div class="check"><span class="box"></span>UAE<span class="n">21</span></div>
+        <div class="check"><span class="box"></span>Saudi Arabia<span class="n">13</span></div>
+        <h4>Score</h4>
+        <div class="check"><span class="box on"></span>70 and above<span class="n">12</span></div>
+        <h4>Flags</h4>
+        <div class="check"><span class="box"></span>Hidden text<span class="n">1</span></div>
+        <div class="check"><span class="box"></span>Numbers don't match<span class="n">3</span></div>
+      </aside>
+      <div class="main">
+        <div class="tabs"><a class="on" href="#">Shortlisted<span>12</span></a><a href="#">All<span>148</span></a><a href="#">Needs review<span>4</span></a><a href="#">Outside focus<span>61</span></a></div>
+
+        <div class="row hover">
+          <div class="logo-sq">P</div>
+          <div class="body">
+            <div class="name">Paylane<span class="loc">Karachi, PK</span></div>
+            <div class="one">Payroll and salary advances for factory workers, paid out to mobile wallets.</div>
+            <div class="tags"><span class="tag">Seed</span><span class="tag">Fintech</span><span class="tag">$1.5M round</span></div>
+          </div>
+          <div class="score"><span class="pill good tabular">86</span><div class="meta">score</div></div>
+          <div class="right-meta"><div class="meta">Memo ready</div><div class="meta">2d ago</div></div>
+        </div>
+
+        <div class="row">
+          <div class="logo-sq">K</div>
+          <div class="body">
+            <div class="name">Kilnworks<span class="loc">Dubai, AE</span></div>
+            <div class="one">Measures and cuts energy use in cement kilns with low-cost sensors.</div>
+            <div class="tags"><span class="tag">Seed</span><span class="tag">Climate</span><span class="tag">$2.5M round</span></div>
+          </div>
+          <div class="score"><span class="pill good tabular">79</span><div class="meta">score</div></div>
+          <div class="right-meta"><div class="meta">Memo ready</div><div class="meta">3d ago</div></div>
+        </div>
+
+        <div class="row">
+          <div class="logo-sq">D</div>
+          <div class="body">
+            <div class="name">Driftcode<span class="loc">Lahore, PK</span></div>
+            <div class="one">Finds and fixes slow database queries before they reach production.</div>
+            <div class="tags"><span class="tag">Pre-seed</span><span class="tag">Dev tools</span><span class="tag">$600k round</span><span class="flag">● Numbers don't match</span></div>
+          </div>
+          <div class="score"><span class="pill good tabular">74</span><div class="meta">score</div></div>
+          <div class="right-meta"><div class="meta">Memo ready</div><div class="meta">4d ago</div></div>
+        </div>
+
+        <div class="row">
+          <div class="logo-sq">T</div>
+          <div class="body">
+            <div class="name">Tallyfold<span class="loc">Riyadh, SA</span></div>
+            <div class="one">Bookkeeping for small retailers that runs inside WhatsApp.</div>
+            <div class="tags"><span class="tag">Seed</span><span class="tag">Fintech</span><span class="tag">$1.2M round</span></div>
+          </div>
+          <div class="score"><span class="pill mid tabular">68</span><div class="meta">score</div></div>
+          <div class="right-meta"><div class="meta">Researching…</div><div class="meta">5h ago</div></div>
+        </div>
+
+        <div class="row">
+          <div class="logo-sq">G</div>
+          <div class="body">
+            <div class="name">Gridleaf<span class="loc">Islamabad, PK</span></div>
+            <div class="one">Rooftop solar financing for schools, repaid from electricity savings.</div>
+            <div class="tags"><span class="tag">Pre-seed</span><span class="tag">Climate</span><span class="tag">$400k round</span></div>
+          </div>
+          <div class="score"><span class="pill mid tabular">61</span><div class="meta">score</div></div>
+          <div class="right-meta"><div class="meta">Memo ready</div><div class="meta">6d ago</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= DEAL PAGE ======================= -->
+<div class="label">02 · Deal page (memo + deck viewer with citations)</div>
+<section class="screen" id="deal">
+  <div class="nav"><div class="in">
+    <div class="logo"><i></i>Shortlist</div>
+    <nav class="links"><a class="on" href="#">Deals</a><a href="#">Approvals <span class="count">3</span></a><a href="#">Agents</a><a href="#">Settings</a></nav>
+    <div class="who">Kestrel Ventures <span class="av">AR</span></div>
+  </div></div>
+  <div class="page">
+    <div class="crumb"><b>Deals</b> / Paylane</div>
+    <div class="dealhead">
+      <div class="logo-sq">P</div>
+      <div style="flex:1">
+        <h1>Paylane</h1>
+        <div class="sub">Payroll and salary advances for factory workers, paid out to mobile wallets.</div>
+        <div class="tags" style="display:flex;gap:6px;margin-top:10px"><span class="tag">Seed</span><span class="tag">Fintech</span><span class="tag">Karachi, PK</span><span class="tag">$1.5M round</span></div>
+      </div>
+      <div style="text-align:center;margin-right:8px"><span class="pill good tabular" style="font-size:22px;padding:6px 12px">86</span><div class="meta">of 100</div></div>
+      <div style="display:flex;gap:8px;align-self:center"><button class="btn">Pass</button><button class="btn primary">Advance to first call</button></div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="tabs"><a class="on" href="#">Memo</a><a href="#">Scores</a><a href="#">Research</a><a href="#">Diligence</a><a href="#">Messages</a><a href="#">History</a></div>
+        <div class="aimeta"><span class="ai">AI draft</span><span class="meta">Assigned to Ayesha R. · config v4 · prompt v2 · 2 days ago</span></div>
+
+        <h3>Summary</h3>
+        <p class="memo">Paylane gives factory workers early access to earned wages, deducted from payroll and paid to mobile wallets. Live with 14 factories and 9,200 workers<span class="cite">p.6</span>, growing to $38k monthly revenue<span class="cite on">p.7</span>.</p>
+
+        <h3>Why now</h3>
+        <p class="memo">Mobile wallet accounts in Pakistan have grown quickly and employers are moving payroll off cash<span class="cite">p.3</span><span class="cite">source</span>.</p>
+
+        <h3>Team</h3>
+        <p class="memo">CEO ran payroll operations at a large textile group for six years; CTO previously built lending systems at a digital bank<span class="cite">p.10</span>.</p>
+
+        <h3>Risks</h3>
+        <p class="memo">Repayment depends on employer payroll integration; two of 14 factories churned in Q3<span class="cite">p.8</span>. Lending licence status is not stated in the deck.</p>
+
+        <h3>Scores</h3>
+        <div class="crit"><span class="k">Team</span><span class="s tabular">5 / 5</span><span class="why">Direct payroll-operations and lending experience <span class="cite">p.10</span></span></div>
+        <div class="crit"><span class="k">Traction</span><span class="s tabular">4 / 5</span><span class="why">$38k MRR, 21% month-on-month for 5 months <span class="cite on">p.7</span></span></div>
+        <div class="crit"><span class="k">Market</span><span class="s tabular">4 / 5</span><span class="why">Large, under-served worker base; sizing is top-down only <span class="cite">p.4</span></span></div>
+        <div class="crit"><span class="k">Product</span><span class="s tabular">4 / 5</span><span class="why">Payroll integration is the moat; no detail on underwriting <span class="cite">p.5</span></span></div>
+      </div>
+
+      <div style="position:sticky;top:20px;align-self:start">
+        <div class="panel">
+          <div class="ph"><b>Pitch deck</b><span class="meta">Page 7 of 14</span></div>
+          <div class="slide">
+            <div class="st">Traction</div>
+            <div class="ss">Monthly revenue, USD</div>
+            <span class="hl tabular">$38k MRR · Sep 2026</span>
+            <div class="bars"><div style="height:22%"></div><div style="height:30%"></div><div style="height:41%"></div><div style="height:52%"></div><div style="height:68%"></div><div style="height:88%"></div></div>
+          </div>
+          <div class="thumbs"><div>5</div><div>6</div><div class="on">7</div><div>8</div><div>9</div></div>
+        </div>
+        <div class="meta" style="margin-top:8px">Click any citation to jump to its page. Highlighted text is what the AI quoted.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= AGENTS ======================= -->
+<div class="label">03 · Agents (use one or all)</div>
+<section class="screen" id="agents">
+  <div class="nav"><div class="in">
+    <div class="logo"><i></i>Shortlist</div>
+    <nav class="links"><a href="#">Deals</a><a href="#">Approvals <span class="count">3</span></a><a class="on" href="#">Agents</a><a href="#">Settings</a></nav>
+    <div class="who">Kestrel Ventures <span class="av">AR</span></div>
+  </div></div>
+  <div class="page narrow">
+    <div class="head"><div><h1>Agents</h1><div class="sub">Turn on the assistants you want. Each one works on its own.</div></div></div>
+
+    <div class="agent"><div class="body"><div class="nm">Intake</div><div class="job">Collects pitches from your form and forwarded emails, and removes duplicates.</div><div class="meta">Last run 4 min ago · 148 pitches this week</div></div><span class="sw on"></span></div>
+    <div class="agent"><div class="body"><div class="nm">Screening</div><div class="job">Reads every deck, checks it against your focus, and scores it with slide references.</div><div class="meta">Last run 4 min ago · 87 decks scored</div></div><span class="sw on"></span></div>
+    <div class="agent"><div class="body"><div class="nm">Research</div><div class="job">Looks up the company, founders' professional background, market and competitors.</div><div class="meta">Last run 1 h ago · 26 companies researched</div></div><span class="sw on"></span></div>
+    <div class="agent"><div class="body"><div class="nm">Memo</div><div class="job">Writes a one-page summary in your format for every shortlisted deal.</div><div class="dep">Needs Screening</div></div><span class="sw on"></span></div>
+    <div class="agent"><div class="body"><div class="nm">Founder messages</div><div class="job">Drafts replies to founders. You approve before anything is sent.</div><div class="meta">3 drafts waiting for approval</div></div><span class="sw on"></span></div>
+    <div class="agent"><div class="body"><div class="nm">Pipeline</div><div class="job">Keeps HubSpot and Slack up to date and sends a Monday digest.</div><div class="status" style="color:var(--danger)"><span class="dot" style="background:var(--danger)"></span>HubSpot disconnected · Reconnect</div></div><span class="sw on"></span></div>
+    <div class="agent"><div class="body"><div class="nm">Diligence</div><div class="job">Reviews financials and cap tables once a deal moves to diligence.</div><div class="dep">Needs Screening · Off</div></div><span class="sw"></span></div>
+  </div>
+</section>
+
+<!-- ======================= APPROVALS ======================= -->
+<div class="label">04 · Approvals (nothing reaches a founder without a person)</div>
+<section class="screen" id="approvals">
+  <div class="nav"><div class="in">
+    <div class="logo"><i></i>Shortlist</div>
+    <nav class="links"><a href="#">Deals</a><a class="on" href="#">Approvals <span class="count">3</span></a><a href="#">Agents</a><a href="#">Settings</a></nav>
+    <div class="who">Kestrel Ventures <span class="av">AR</span></div>
+  </div></div>
+  <div class="page narrow">
+    <div class="head"><div><h1>Approvals</h1><div class="sub">Drafts written by Shortlist. Edit if needed, then approve to send.</div></div></div>
+
+    <div class="appr"><div class="body"><div><span class="to">Sara Malik</span> <span class="meta">· Gridleaf</span> <span class="tag" style="margin-left:6px">Pass after review</span></div>
+      <div class="draft">Hi Sara, thank you for sharing Gridleaf with us. We enjoyed learning about your school solar financing model. It isn't a fit for our current fund, mainly because…</div></div>
+      <div class="acts"><button class="btn ghost sm">Edit</button><button class="btn ghost sm">Discard</button><button class="btn primary sm">Approve &amp; send</button></div></div>
+
+    <div class="appr"><div class="body"><div><span class="to">Omar Qureshi</span> <span class="meta">· Driftcode</span> <span class="tag" style="margin-left:6px">Request info</span></div>
+      <div class="draft">Hi Omar, thanks for the deck. Your form lists $24k MRR while slide 7 shows $9k. Could you share your latest monthly revenue and a short financial model?</div></div>
+      <div class="acts"><button class="btn ghost sm">Edit</button><button class="btn ghost sm">Discard</button><button class="btn primary sm">Approve &amp; send</button></div></div>
+
+    <div class="appr"><div class="body"><div><span class="to">Hamza Iqbal</span> <span class="meta">· Paylane</span> <span class="tag" style="margin-left:6px">Advance</span></div>
+      <div class="draft">Hi Hamza, we'd love to learn more about Paylane. Could you pick a 30-minute slot with Ayesha this week?</div></div>
+      <div class="acts"><button class="btn ghost sm">Edit</button><button class="btn ghost sm">Discard</button><button class="btn primary sm">Approve &amp; send</button></div></div>
+  </div>
+</section>
+
+</body>
+</html>

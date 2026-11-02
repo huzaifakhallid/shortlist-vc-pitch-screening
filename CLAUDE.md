@@ -97,7 +97,7 @@ docs/               design.md, progress.md, ui/
 - Build in thin vertical slices that run end to end, with tests, rather than layers.
 - After implementing, run checks, then ask the `code-reviewer` subagent to review the diff. Security-sensitive changes (auth, webhooks, files, integrations) also go to `security-reviewer`.
 - Never read or print `.env` files or secrets. Use `packages/schemas/env.ts` names in code and `.env.example` for documentation.
-- Commit messages: `area: what changed` (e.g., `screening: validate citations against page text`).
+- Commit messages: `feat: one short sentence`. Subject line only, with no body and no Claude attribution or `Co-Authored-By` trailer.
 
 ## Subagents (`.claude/agents/`)
 

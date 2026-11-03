@@ -880,7 +880,7 @@ The measured results are the strongest sales asset; they turn a demo into eviden
 
 Both run the same code; only environment configuration differs.
 
-**Worker image:** `apps/worker/Dockerfile` installs poppler and exists only for the Railway build. Local development doesn't use it.
+**Worker runtime:** the worker runs TypeScript with `tsx`, locally and in its image, so the shared base config keeps Bundler module resolution. `apps/worker/Dockerfile` installs poppler and exists only for the Railway build. Local development doesn't use it.
 
 **CI (GitHub Actions):** a Postgres 16 service container provides the database. Steps: typecheck → lint → unit tests (mandate, citation validator, claim checks, dependency rules, scoring math) → migrations check → eval smoke test (5 decks) → build → deploy on `main`. Environment variables are validated at boot; a missing one stops the process with a clear message.
 

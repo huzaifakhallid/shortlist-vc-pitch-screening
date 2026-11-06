@@ -19,10 +19,14 @@ export type EventType = z.infer<typeof eventTypeSchema>;
 
 const emptyPayload = z.strictObject({});
 
+// Where a person moved a deal (§12 stage_transition.source).
+export const stageChangeSourceSchema = z.enum(["dashboard", "slack"]);
+export type StageChangeSource = z.infer<typeof stageChangeSourceSchema>;
+
 export const stageChangedPayloadSchema = z.strictObject({
   from: dealStageSchema,
   to: dealStageSchema,
-  source: z.enum(["dashboard", "slack"]),
+  source: stageChangeSourceSchema,
 });
 
 export const eventSchema = z.discriminatedUnion("type", [

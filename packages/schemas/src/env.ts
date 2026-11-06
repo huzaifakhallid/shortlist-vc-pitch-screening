@@ -17,6 +17,18 @@ export const workerEnvSchema = z.object({
 });
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 
+// packages/db: the client and drizzle-kit.
+export const dbEnvSchema = z.object({
+  DATABASE_URL: databaseUrl,
+});
+export type DbEnv = z.infer<typeof dbEnvSchema>;
+
+// packages/db tests. A separate database, because the tests wipe it.
+export const dbTestEnvSchema = z.object({
+  TEST_DATABASE_URL: databaseUrl,
+});
+export type DbTestEnv = z.infer<typeof dbTestEnvSchema>;
+
 // Throws one error naming every missing or invalid variable. Values are never
 // included in the message, since they may be secrets.
 export function parseEnv<S extends z.ZodObject>(

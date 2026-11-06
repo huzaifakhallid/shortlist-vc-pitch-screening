@@ -50,6 +50,14 @@ export const integrationKindSchema = z.enum([
 ]);
 export type IntegrationKind = z.infer<typeof integrationKindSchema>;
 
+// §12 integration.status. Only "connected" counts for stage 2.
+export const integrationStatusSchema = z.enum([
+  "connected",
+  "error",
+  "disconnected",
+]);
+export type IntegrationStatus = z.infer<typeof integrationStatusSchema>;
+
 const agentsSchema = z.strictObject({
   intake: z.strictObject({
     enabled: z.boolean(),
@@ -160,6 +168,23 @@ export class ConfigValidationError extends Error {
     this.name = "ConfigValidationError";
     this.issues = issues;
   }
+}
+
+// Stage 1 for unknown input (a settings form, the seed): same checks as
+// workspaceConfigSchema, reported as a ConfigValidationError.
+export function parseWorkspaceConfig(input: unknown): WorkspaceConfig {
+  const result = workspaceConfigSchema.safeParse(input);
+  if (!result.success) {
+    throw new ConfigValidationError(
+      result.error.issues.map((issue) => ({
+        path: issue.path.map((key) =>
+          typeof key === "symbol" ? key.toString() : key,
+        ),
+        message: issue.message,
+      })),
+    );
+  }
+  return result.data;
 }
 
 export type WorkspaceContext = {

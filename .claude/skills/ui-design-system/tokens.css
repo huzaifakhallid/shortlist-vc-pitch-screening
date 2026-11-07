@@ -1,0 +1,81 @@
+/*
+  Shortlist design tokens (YC-inspired: white, quiet, list-based, one orange accent).
+
+  How to apply (milestone 1):
+  1. Run `npx shadcn@latest init` in apps/web. It generates app/globals.css with a
+     :root block of variables, a .dark block and an `@theme inline` block.
+  2. Replace the generated :root block with the :root block below.
+  3. Delete the .dark block (v1 is light only).
+  4. Add the lines from the `@theme inline` block below into the generated
+     `@theme inline` block (keep shadcn's existing mappings).
+  5. Load Inter with next/font/google in app/layout.tsx as variable "--font-inter".
+
+  All values pass WCAG AA for their intended text pairing (checked):
+  primary/white 4.70, muted-foreground/white 5.68, faint-foreground/white 4.69,
+  success/success-soft 4.76, warning/warning-soft 4.58, danger/danger-soft 5.91.
+  --brand (#ea580c) is 3.56 on white: use it only for non-text marks
+  (logo dot, active tab underline, switch "on", focus ring), never for text.
+*/
+
+:root {
+  --radius: 0.375rem; /* 6px controls; panels use rounded-lg (8px) */
+
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+
+  --primary: #cc4709;             /* buttons, links with text */
+  --primary-foreground: #ffffff;
+  --secondary: #f6f5f2;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f6f5f2;
+  --muted-foreground: #6b6660;
+  --accent: #f1efea;              /* shadcn "accent" = hover/selected background */
+  --accent-foreground: #1a1a1a;
+  --destructive: #b91c1c;
+
+  --border: #e7e4de;
+  --input: #dcd8d0;
+  --ring: #ea580c;
+
+  /* Shortlist additions */
+  --brand: #ea580c;               /* non-text marks only */
+  --brand-soft: #fff3eb;          /* highlight backgrounds (cited snippet, selected row) */
+  --primary-hover: #b83d0a;
+  --subtle: #fafaf8;              /* page sections, sidebar, table header */
+  --faint-foreground: #79736b;    /* timestamps, counts */
+  --success: #15803d;
+  --success-soft: #ecfdf3;
+  --warning: #a16207;
+  --warning-soft: #fef6e4;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-primary-hover: var(--primary-hover);
+  --color-subtle: var(--subtle);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground text-sm antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

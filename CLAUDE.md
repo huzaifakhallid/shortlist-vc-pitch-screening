@@ -40,7 +40,13 @@ pnpm test:e2e               # Playwright
 pnpm eval                   # evaluation harness, writes eval/reports/
 ```
 
-Local development has no Docker: PostgreSQL 16 and MinIO run natively on Windows (design §21). Both must be running before `pnpm db:migrate`, `pnpm dev` or `pnpm worker`.
+Local development has no Docker: PostgreSQL 16 and MinIO run natively on Windows (design §21). Both must be running before `pnpm db:migrate`, `pnpm dev` or `pnpm worker`. MinIO isn't installed yet (see `docs/progress.md`).
+
+Postgres runs from `%LOCALAPPDATA%\shortlist-dev` and isn't a Windows service, so start it after a reboot, in PowerShell:
+
+```powershell
+& "$env:LOCALAPPDATA\shortlist-dev\pgsql\bin\pg_ctl.exe" -D "$env:LOCALAPPDATA\shortlist-dev\pgdata" -l "$env:LOCALAPPDATA\shortlist-dev\postgres.log" start
+```
 
 Before saying a task is done: `pnpm typecheck && pnpm lint && pnpm test` pass.
 

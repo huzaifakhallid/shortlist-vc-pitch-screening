@@ -5,7 +5,8 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 ## Milestone 1 — Foundations (§24)
 - [ ] pnpm workspace, TypeScript strict base config, ESLint, Prettier, Vitest
 - [ ] `apps/web` (Next.js App Router, Tailwind v4, shadcn/ui) with design tokens from `ui-design-system`
-- [ ] Native toolchain: Node LTS, pnpm, PostgreSQL 16, MinIO, poppler, GitHub CLI (§21)
+- [x] Native toolchain: Node 26.13.0, pnpm 12.18.0, PostgreSQL 16.15 (no-install zip, not a Windows service), poppler 25.07.0, GitHub CLI 2.103.3 (§21)
+- [ ] MinIO: blocked. winget and dl.min.io both return 410 and the `minio/minio` repo is archived with no binaries. Needs a decision before milestone 2; milestone 1 doesn't use file storage.
 - [ ] `packages/schemas`: env, workspace config (§13) with two-stage validation incl. dependency rules (§8.3), stages + run status (§12.1), events (§8.2)
 - [ ] `packages/db`: Drizzle schema (§12), first migration, data-access layer scoped by workspace
 - [ ] Auth.js magic link + one-click demo users; roles + `authorize()` (§6, §15.1)

@@ -19,7 +19,7 @@ Current progress:
    - Delegate to the right subagent (`agent-builder`, `integration-builder`, `ui-builder`) with the task, the design sections, and the acceptance check.
    - Run `pnpm typecheck && pnpm lint && pnpm test`.
    - Send the diff to `code-reviewer` (and `security-reviewer` for auth, webhooks, files, integrations). Fix blockers.
-   - Commit: `area: what changed`. Tick the task in `docs/progress.md`.
+   - Commit: `feat: one short sentence`, with no body and no attribution. Tick the task in `docs/progress.md`.
 5. At the end: run the app (`pnpm dev`, `pnpm worker`) and walk through the milestone's "done when" from §24. Report what works, what's left, and any design change you had to make (and update `docs/design.md` if so).
 
 ## Milestone 1 notes (scaffolding)

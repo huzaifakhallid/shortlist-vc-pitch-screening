@@ -30,5 +30,22 @@ export default defineConfig(
       ],
     },
   },
+  {
+    files: ["apps/web/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@shortlist/db/coordinator",
+              message:
+                "Coordinator-only, cross-workspace functions. The web app uses @shortlist/db.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   prettier,
 );

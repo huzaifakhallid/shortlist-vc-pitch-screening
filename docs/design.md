@@ -615,6 +615,8 @@ erDiagram
 
 **Money:** all costs are integer micro-dollars (`cost_micros`), never floats.
 
+**Tenancy in the schema:** every workspace-owned table, including per-deal and per-run children, has `workspace_id` and references other workspace-owned rows by `(workspace_id, id)` composite foreign keys, so no row can point into another workspace. User columns on those tables (`created_by`, `user_id`, `assigned_partner_id`, `decided_by`, `uploaded_by`, `actor_user_id`) reference `membership(workspace_id, user_id)`, so they must name a member of the same workspace. A CHECK on `event` requires `deal_id` to be null exactly for `email.received` and `form.submitted`. `event` and `run_step` have a `seq` identity column; claims and step lists are ordered by it. Every table has `created_at`; `agent_run` adds `started_at`/`finished_at`; `audit_event` stores its actor as `actor_user_id` or `actor_agent` (exactly one). Enumerated columns are Postgres enums derived from the lists in `packages/schemas`.
+
 ### 12.1 Deal stages and run status
 
 These are two separate lists. A stage says where a deal is in the fund's process; a run status says what happened to one agent run.

@@ -1,0 +1,145 @@
+import { describe, expect, it } from "vitest";
+import {
+  createRun,
+  finishRun,
+  insertEvent,
+  insertStep,
+  listSteps,
+  startRun,
+  withTransaction,
+} from "../index";
+import { createTestDeal, createTestWorkspace, saveTestConfig } from "./helpers";
+
+async function queuedRun() {
+  const t = await createTestWorkspace("kestrel");
+  const config = await saveTestConfig(t);
+  const dealId = await createTestDeal(t.workspace.id);
+  const trigger = await withTransaction((tx) =>
+    insertEvent(tx, t.workspace.id, {
+      type: "deal.received",
+      dealId,
+      payload: {},
+    }),
+  );
+  const input = {
+    agent: "screening" as const,
+    triggerEventId: trigger.id,
+    configVersionId: config.id,
+  };
+  const { run } = await createRun(t.workspace.id, input);
+  return { workspaceId: t.workspace.id, dealId, input, run };
+}
+
+const usage = {
+  tokensIn: 1200,
+  tokensOut: 300,
+  costMicros: 450,
+  latencyMs: 900,
+};
+const started = { promptVersion: "v1", model: "gemini-test", inputHash: "abc" };
+
+describe("agent runs", () => {
+  it("creates one run per (agent, trigger event)", async () => {
+    const { workspaceId, dealId, input, run } = await queuedRun();
+    expect(run).toMatchObject({ status: "QUEUED", dealId, workspaceId });
+
+    const again = await createRun(workspaceId, input);
+    expect(again).toEqual({ run, created: false });
+
+    const other = await createRun(workspaceId, { ...input, agent: "research" });
+    expect(other.created).toBe(true);
+    expect(other.run.id).not.toBe(run.id);
+  });
+
+  it("starts, resumes and finishes a run once", async () => {
+    const { workspaceId, run } = await queuedRun();
+    const first = await startRun(workspaceId, run.id, started);
+    const resumed = await startRun(workspaceId, run.id, started);
+    expect(resumed.status).toBe("RUNNING");
+    expect(resumed.startedAt).toEqual(first.startedAt);
+
+    const finished = await finishRun(workspaceId, run.id, {
+      status: "SUCCEEDED",
+      output: { score: 72 },
+      ...usage,
+    });
+    expect(finished).toMatchObject({
+      status: "SUCCEEDED",
+      output: { score: 72 },
+      error: null,
+      ...usage,
+    });
+    expect(finished.finishedAt).toBeInstanceOf(Date);
+
+    await expect(
+      finishRun(workspaceId, run.id, {
+        status: "FAILED",
+        error: "late",
+        ...usage,
+      }),
+    ).rejects.toThrow(`Cannot finish run ${run.id}: it is SUCCEEDED`);
+    await expect(startRun(workspaceId, run.id, started)).rejects.toThrow(
+      `Cannot start run ${run.id}: it is SUCCEEDED`,
+    );
+  });
+
+  it("refuses to resume with a different prompt version", async () => {
+    const { workspaceId, run } = await queuedRun();
+    await startRun(workspaceId, run.id, started);
+    await expect(
+      startRun(workspaceId, run.id, { ...started, promptVersion: "v2" }),
+    ).rejects.toThrow(
+      `Cannot resume run ${run.id} with a different promptVersion: started with "v1", got "v2"`,
+    );
+  });
+
+  it("refuses to finish a run that never started", async () => {
+    const { workspaceId, run } = await queuedRun();
+    await expect(
+      finishRun(workspaceId, run.id, {
+        status: "FAILED",
+        error: "early",
+        ...usage,
+      }),
+    ).rejects.toThrow(`Cannot finish run ${run.id}: it is QUEUED`);
+  });
+
+  it("adds steps only while the run is running", async () => {
+    const { workspaceId, run } = await queuedRun();
+    const step = { step: "render", status: "SUCCEEDED" as const, output: {} };
+    await expect(insertStep(workspaceId, run.id, step)).rejects.toThrow(
+      `Cannot add a step to run ${run.id}: it is QUEUED`,
+    );
+    await startRun(workspaceId, run.id, started);
+    await insertStep(workspaceId, run.id, step);
+    await finishRun(workspaceId, run.id, {
+      status: "SUCCEEDED",
+      output: {},
+      ...usage,
+    });
+    await expect(insertStep(workspaceId, run.id, step)).rejects.toThrow(
+      `Cannot add a step to run ${run.id}: it is SUCCEEDED`,
+    );
+  });
+
+  it("lists a run's steps in insertion order", async () => {
+    const { workspaceId, run } = await queuedRun();
+    await startRun(workspaceId, run.id, started);
+    await insertStep(workspaceId, run.id, {
+      step: "render",
+      status: "SUCCEEDED",
+      output: { pages: 12 },
+    });
+    await insertStep(workspaceId, run.id, {
+      step: "facts",
+      status: "FAILED",
+      output: null,
+    });
+
+    const steps = await listSteps(workspaceId, run.id);
+    expect(steps.map((s) => [s.step, s.status, s.output])).toEqual([
+      ["render", "SUCCEEDED", { pages: 12 }],
+      ["facts", "FAILED", null],
+    ]);
+  });
+});

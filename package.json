@@ -12,7 +12,8 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "db:generate": "pnpm --filter @shortlist/db generate",
-    "db:migrate": "pnpm --filter @shortlist/db migrate"
+    "db:migrate": "pnpm --filter @shortlist/db migrate",
+    "db:seed": "pnpm --filter @shortlist/db seed"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

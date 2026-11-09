@@ -11,7 +11,7 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [x] `packages/db`: Drizzle schema (§12), first migration, data-access layer scoped by workspace
 - [ ] Auth.js magic link + one-click demo users; roles + `authorize()` (§6, §15.1)
 - [ ] `packages/coordinator` + `packages/agents/shared` + `apps/worker`: events → enabled agents → pg-boss jobs; `agent_run` + `run_step` persistence; `LlmClient` type only (Gemini implementation is milestone 2)
-- [ ] Seed script: demo workspace "Kestrel Ventures" (fictional) with config v1, Slack and HubSpot off
+- [x] Seed script (`pnpm db:seed`): demo workspace "Kestrel Ventures" (fictional) with two partners, an analyst and an admin, config v1, Slack and HubSpot off. Leaves an existing `kestrel` workspace unchanged (no FK cascades, so the milestone 6 nightly reset needs its own delete path)
 - [ ] CI: GitHub Actions with a Postgres service container
 
 ## Milestone 2 — Intake + Screening

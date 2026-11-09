@@ -3,3 +3,4 @@ pnpm-lock.yaml
 docs/
 .claude/
 packages/db/migrations/
+apps/web/components/ui/

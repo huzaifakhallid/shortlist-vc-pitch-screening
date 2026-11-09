@@ -7,7 +7,10 @@
   2. Replace the generated :root block with the :root block below.
   3. Delete the .dark block (v1 is light only).
   4. Add the lines from the `@theme inline` block below into the generated
-     `@theme inline` block (keep shadcn's existing mappings).
+     `@theme inline` block. Keep only the shadcn mappings whose variables the
+     :root block below defines (drop e.g. --color-sidebar-*, --color-chart-*),
+     and replace shadcn's --font-sans with the one below. Keep
+     `@custom-variant dark` so shadcn's dark: classes never follow the OS setting.
   5. Load Inter with next/font/google in app/layout.tsx as variable "--font-inter".
 
   All values pass WCAG AA for their intended text pairing (checked):

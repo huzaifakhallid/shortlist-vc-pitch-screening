@@ -2,6 +2,7 @@
 // client, schema and internal helpers stay inside (CLAUDE.md: all queries go
 // through here). Coordinator-only functions live in "@shortlist/db/coordinator".
 export { closeDb, withTransaction, type Tx } from "./client";
+export { authAdapter, createSession } from "./access/auth";
 export {
   getActiveConfig,
   saveConfigVersion,
@@ -11,8 +12,11 @@ export { insertEvent, type StoredEvent } from "./access/event";
 export { listConnectedKinds } from "./access/integration";
 export {
   createMembership,
+  getMembership,
   listPartnerIds,
+  listUserMemberships,
   type Membership,
+  type UserMembership,
 } from "./access/membership";
 export {
   createRun,

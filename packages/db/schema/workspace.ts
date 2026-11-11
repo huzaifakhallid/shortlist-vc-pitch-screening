@@ -27,8 +27,8 @@ export const workspace = pgTable("workspace", {
   createdAt: createdAt(),
 });
 
-// Matches the user table the Auth.js Drizzle adapter expects (step 6 adds
-// account, session and verification_token next to it).
+// Matches the user table the Auth.js Drizzle adapter expects (its other
+// tables are in auth.ts).
 export const user = pgTable("user", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name"),

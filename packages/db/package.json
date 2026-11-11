@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
-    "./coordinator": "./access/coordinator.ts"
+    "./coordinator": "./access/coordinator.ts",
+    "./demo": "./seed/demo-members.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -14,6 +15,7 @@
     "seed": "tsx seed/main.ts"
   },
   "dependencies": {
+    "@auth/drizzle-adapter": "1.11.3",
     "@shortlist/schemas": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1",

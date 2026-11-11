@@ -1,9 +1,17 @@
 import type { Role } from "@shortlist/schemas";
 import { and, eq } from "drizzle-orm";
 import { db, single, type Executor } from "../client";
-import { membership } from "../schema";
+import { membership, workspace } from "../schema";
 
 export type Membership = typeof membership.$inferSelect;
+
+// A user's place in one workspace, as the session needs it.
+export type UserMembership = {
+  workspaceId: string;
+  workspaceSlug: string;
+  workspaceName: string;
+  role: Role;
+};
 
 export async function createMembership(
   workspaceId: string,
@@ -36,4 +44,36 @@ export async function selectPartnerIds(
       ),
     );
   return rows.map((row) => row.userId);
+}
+
+export async function getMembership(
+  workspaceId: string,
+  userId: string,
+): Promise<Membership | null> {
+  const [row] = await db()
+    .select()
+    .from(membership)
+    .where(
+      and(
+        eq(membership.workspaceId, workspaceId),
+        eq(membership.userId, userId),
+      ),
+    );
+  return row ?? null;
+}
+
+// Every workspace a user belongs to. Not scoped by workspaceId: this is how a
+// signed-in user's workspace is found in the first place (§15.1).
+export function listUserMemberships(userId: string): Promise<UserMembership[]> {
+  return db()
+    .select({
+      workspaceId: workspace.id,
+      workspaceSlug: workspace.slug,
+      workspaceName: workspace.name,
+      role: membership.role,
+    })
+    .from(membership)
+    .innerJoin(workspace, eq(workspace.id, membership.workspaceId))
+    .where(eq(membership.userId, userId))
+    .orderBy(workspace.slug);
 }

@@ -5,12 +5,13 @@ const validWebEnv = {
   DATABASE_URL: "postgres://shortlist:shortlist@localhost:5432/shortlist",
   AUTH_SECRET: "a".repeat(32),
   APP_URL: "http://localhost:3000",
+  DEMO_LOGINS: "false",
 };
 
 describe("parseEnv", () => {
   it("names every missing variable", () => {
     expect(() => parseEnv(webEnvSchema, {})).toThrow(
-      "Missing or invalid environment variables: DATABASE_URL, AUTH_SECRET, APP_URL",
+      "Missing or invalid environment variables: DATABASE_URL, AUTH_SECRET, APP_URL, DEMO_LOGINS",
     );
   });
 
@@ -20,16 +21,25 @@ describe("parseEnv", () => {
         ...validWebEnv,
         DATABASE_URL: "mysql://localhost/shortlist",
         AUTH_SECRET: "short",
+        DEMO_LOGINS: "1",
       }),
     ).toThrow(
-      "Missing or invalid environment variables: DATABASE_URL, AUTH_SECRET",
+      "Missing or invalid environment variables: DATABASE_URL, AUTH_SECRET, DEMO_LOGINS",
     );
   });
 
   it("returns the web env when valid", () => {
-    expect(parseEnv(webEnvSchema, { ...validWebEnv, PATH: "/bin" })).toEqual(
-      validWebEnv,
-    );
+    expect(parseEnv(webEnvSchema, { ...validWebEnv, PATH: "/bin" })).toEqual({
+      ...validWebEnv,
+      DEMO_LOGINS: false,
+    });
+  });
+
+  it("reads DEMO_LOGINS as a boolean", () => {
+    expect(
+      parseEnv(webEnvSchema, { ...validWebEnv, DEMO_LOGINS: "true" })
+        .DEMO_LOGINS,
+    ).toBe(true);
   });
 
   it("needs only DATABASE_URL for the worker", () => {

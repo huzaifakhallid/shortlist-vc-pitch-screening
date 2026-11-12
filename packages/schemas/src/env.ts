@@ -4,11 +4,15 @@ import { z } from "zod";
 const databaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
 const authSecret = z.string().min(32);
 const appUrl = z.url({ protocol: /^https?$/ });
+// An explicit "true" or "false": a flag that opens sign-in has no default.
+const flag = z.enum(["true", "false"]).transform((value) => value === "true");
 
 export const webEnvSchema = z.object({
   DATABASE_URL: databaseUrl,
   AUTH_SECRET: authSecret,
   APP_URL: appUrl,
+  // One-click sign-in as the seeded demo personas (§23.1). Local and demo only.
+  DEMO_LOGINS: flag,
 });
 export type WebEnv = z.infer<typeof webEnvSchema>;
 

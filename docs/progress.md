@@ -11,7 +11,9 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] MinIO: blocked. winget and dl.min.io both return 410 and the `minio/minio` repo is archived with no binaries. Needs a decision before milestone 2; milestone 1 doesn't use file storage.
 - [x] `packages/schemas`: env, workspace config (§13) with two-stage validation incl. dependency rules (§8.3), stages + run status (§12.1), events (§8.2)
 - [x] `packages/db`: Drizzle schema (§12), first migration, data-access layer scoped by workspace
-- [ ] Auth.js magic link + one-click demo users; roles + `authorize()` (§6, §15.1)
+- [x] Auth.js magic link + one-click demo users; roles + `authorize()` (§6, §15.1): next-auth 5 beta with the Drizzle adapter and database sessions (migration `0001_auth`); members only, no sign-up; magic links print to the `pnpm dev` terminal and throw elsewhere until Postmark; demo logins behind `DEMO_LOGINS`; `authorize()` in `apps/web/lib/authorize.ts`; `proxy.ts` redirects signed-out visitors (add new dashboard routes to its matcher)
+- [ ] Workspace switcher: a user with more than one membership currently fails with a specific error (`apps/web/lib/workspace-membership.ts`)
+- [ ] Known gap (library behaviour): Auth.js treats a database error while reading the session as signed out. Its `logger.error` records the error on the server; Sentry later
 - [ ] `packages/coordinator` + `packages/agents/shared` + `apps/worker`: events → enabled agents → pg-boss jobs; `agent_run` + `run_step` persistence; `LlmClient` type only (Gemini implementation is milestone 2)
 - [x] Seed script (`pnpm db:seed`): demo workspace "Kestrel Ventures" (fictional) with two partners, an analyst and an admin, config v1, Slack and HubSpot off. Leaves an existing `kestrel` workspace unchanged (no FK cascades, so the milestone 6 nightly reset needs its own delete path)
 - [ ] CI: GitHub Actions with a Postgres service container
@@ -31,6 +33,7 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 ## Milestone 4 — Comms + Pipeline
 - [ ] Approvals inbox + approval state machine (§11.4)
 - [ ] Postmark outbound from verified domain
+- [ ] With Postmark: turn email sign-in on outside `pnpm dev` (`apps/web/lib/magic-link.ts`), and add a per-IP rate limit on `requestMagicLink` and the demo login (§15.5)
 - [ ] Slack cards, buttons (signature-verified), weekly digest
 - [ ] HubSpot, Airtable, Google Sheets adapters
 
@@ -39,9 +42,11 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Public API `/v1` with workspace API keys
 - [ ] Manual re-run trigger: `agent.run_requested` event for dashboard re-runs and `POST /v1/agents/{agent}/runs` (§11.2)
 - [ ] Agents page (on/off cards), Integrations page, Run inspector, Audit log
+- [ ] `users.manage`: removing a membership deletes that user's sessions in the same transaction
 
 ## Milestone 6 — Evaluation + launch
 - [ ] Synthetic dataset (30 decks, 5 data rooms, 10 emails) + labels
 - [ ] Eval harness + first report
 - [ ] Demo deploy with nightly reset
+- [ ] Demo workspace safety: deny `integrations.manage` and `users.manage` to demo sessions, or rely on the nightly reset. Decide before those handlers ship
 - [ ] README (plain language first), 90-second video, case study, Upwork entry

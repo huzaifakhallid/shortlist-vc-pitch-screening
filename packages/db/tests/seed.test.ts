@@ -9,7 +9,8 @@ import {
   listPartnerIds,
 } from "../index";
 import { configVersion, membership, user, workspace } from "../schema";
-import { DEMO_SLUG, seedDemoWorkspace } from "../seed/seed";
+import { DEMO_SLUG } from "../seed/demo-members";
+import { seedDemoWorkspace } from "../seed/seed";
 
 async function userId(email: string): Promise<string> {
   const found = await getUserByEmail(email);

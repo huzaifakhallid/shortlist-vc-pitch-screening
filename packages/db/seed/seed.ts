@@ -10,36 +10,8 @@ import {
   type User,
   type Workspace,
 } from "../index";
+import { DEMO_MEMBERS, DEMO_SLUG, type DemoMemberKey } from "./demo-members";
 import { kestrelConfig } from "./kestrel-config";
-
-export const DEMO_SLUG = "kestrel";
-
-// Fictional people, one per §6 role, plus a second partner so routing splits.
-const DEMO_MEMBERS = {
-  amara: {
-    email: "amara.qureshi@kestrel.example",
-    name: "Amara Qureshi",
-    role: "partner",
-  },
-  daniel: {
-    email: "daniel.okafor@kestrel.example",
-    name: "Daniel Okafor",
-    role: "partner",
-  },
-  sana: {
-    email: "sana.mirza@kestrel.example",
-    name: "Sana Mirza",
-    role: "analyst",
-  },
-  leo: {
-    email: "leo.varga@kestrel.example",
-    name: "Leo Varga",
-    role: "admin",
-  },
-} as const satisfies Record<
-  string,
-  { email: string; name: string; role: Role }
->;
 
 export type SeedResult = {
   status: "created" | "exists";
@@ -67,7 +39,7 @@ export async function seedDemoWorkspace(): Promise<SeedResult> {
     intakeAddress: `pitches+${DEMO_SLUG}@in.shortlist.dev`,
   });
 
-  const users: Record<keyof typeof DEMO_MEMBERS, User> = {
+  const users: Record<DemoMemberKey, User> = {
     amara: await addMember(workspace.id, DEMO_MEMBERS.amara),
     daniel: await addMember(workspace.id, DEMO_MEMBERS.daniel),
     sana: await addMember(workspace.id, DEMO_MEMBERS.sana),

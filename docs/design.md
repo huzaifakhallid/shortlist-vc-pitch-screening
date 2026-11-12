@@ -732,6 +732,7 @@ Saving creates a new version. Every agent run records the version it used, so "w
 - One data-access layer takes `workspaceId` from the session or API key, never from the request body.
 - Slack button clicks and Postmark webhooks are verified by signature before anything is read.
 - Integration credentials are encrypted (AES-256-GCM) with a key held outside the database.
+- Auth.js session tokens are stored unhashed in `session` (the adapter standard), so database read access equals session access; magic-link verification tokens are stored hashed.
 
 ### 15.2 Hostile pitch decks
 

@@ -109,4 +109,27 @@ describe("events", () => {
       ),
     ).rejects.toThrow(`Event ${created.id} was already processed`);
   });
+
+  it("refuses an invalid payload before writing it", async () => {
+    const a = await createTestWorkspace("alpha");
+    const dealId = await createTestDeal(a.workspace.id);
+    // What agent output typed loosely at runtime could produce.
+    const loose = JSON.parse('{ "from": "SCREENED" }') as {
+      from: "SCREENED";
+      to: "IC";
+      source: "slack";
+    };
+    await expect(
+      withTransaction((tx) =>
+        insertEvent(tx, a.workspace.id, {
+          type: "deal.stage_changed",
+          dealId,
+          payload: loose,
+        }),
+      ),
+    ).rejects.toThrow('Event "deal.stage_changed" has an invalid payload');
+    await expect(
+      withTransaction((tx) => claimUnprocessedEventsAcrossWorkspaces(tx, 10)),
+    ).resolves.toEqual([]);
+  });
 });

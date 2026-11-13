@@ -29,7 +29,8 @@ import { configVersion, memberRef, workspace } from "./workspace";
 const seq = () =>
   bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity();
 
-// Append-only, except processed_at, which the coordinator sets once.
+// Append-only, except the coordinator's fields: processed_at, set once, and
+// the dispatch failure record.
 export const event = pgTable(
   "event",
   {
@@ -44,6 +45,10 @@ export const event = pgTable(
     payload: jsonb("payload").$type<ShortlistEvent["payload"]>().notNull(),
     createdAt: createdAt(),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    // Failed dispatches and the latest one's error. The coordinator stops
+    // claiming the event after MAX_DISPATCH_ATTEMPTS.
+    dispatchAttempts: integer("dispatch_attempts").notNull().default(0),
+    dispatchError: text("dispatch_error"),
   },
   (t) => [
     unique("event_workspace_id_id_key").on(t.workspaceId, t.id),

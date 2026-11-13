@@ -22,11 +22,13 @@ async function twoWorkspaces() {
       payload: {},
     }),
   );
-  const { run: runA } = await createRun(a.workspace.id, {
-    agent: "intake",
-    triggerEventId: eventA.id,
-    configVersionId: configA.id,
-  });
+  const { run: runA } = await withTransaction((tx) =>
+    createRun(tx, a.workspace.id, {
+      agent: "intake",
+      triggerEventId: eventA.id,
+      configVersionId: configA.id,
+    }),
+  );
   return { a: a.workspace.id, b: b.workspace.id, configA, eventA, runA };
 }
 
@@ -45,11 +47,13 @@ describe("tenancy", () => {
       withTransaction((tx) => markEventProcessed(tx, b, eventA.id)),
     ).rejects.toThrow(`Event ${eventA.id} not found in workspace ${b}`);
     await expect(
-      createRun(b, {
-        agent: "intake",
-        triggerEventId: eventA.id,
-        configVersionId: "00000000-0000-0000-0000-000000000000",
-      }),
+      withTransaction((tx) =>
+        createRun(tx, b, {
+          agent: "intake",
+          triggerEventId: eventA.id,
+          configVersionId: "00000000-0000-0000-0000-000000000000",
+        }),
+      ),
     ).rejects.toThrow(`Trigger event ${eventA.id} not found in workspace ${b}`);
   });
 
@@ -97,11 +101,13 @@ describe("tenancy", () => {
       insertEvent(tx, b, { type: "deal.received", dealId: dealB, payload: {} }),
     );
     await expect(
-      createRun(b, {
-        agent: "screening",
-        triggerEventId: eventB.id,
-        configVersionId: configA.id,
-      }),
+      withTransaction((tx) =>
+        createRun(tx, b, {
+          agent: "screening",
+          triggerEventId: eventB.id,
+          configVersionId: configA.id,
+        }),
+      ),
     ).rejects.toMatchObject({
       cause: { constraint: "agent_run_config_version_fk" },
     });

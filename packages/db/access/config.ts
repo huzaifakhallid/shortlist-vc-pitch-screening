@@ -6,7 +6,7 @@ import {
 } from "@shortlist/schemas";
 import { and, eq, max } from "drizzle-orm";
 import { z } from "zod";
-import { db, single, withTransaction } from "../client";
+import { db, single, withTransaction, type Executor } from "../client";
 import { configVersion, workspace } from "../schema";
 import { selectConnectedKinds } from "./integration";
 import { selectPartnerIds } from "./membership";
@@ -70,10 +70,17 @@ export async function saveConfigVersion(
   });
 }
 
-export async function getActiveConfig(
+export function getActiveConfig(workspaceId: string): Promise<ActiveConfig> {
+  return selectActiveConfig(db(), workspaceId);
+}
+
+// Exported only from "@shortlist/db/coordinator": for reads inside a
+// caller's transaction.
+export async function selectActiveConfig(
+  q: Executor,
   workspaceId: string,
 ): Promise<ActiveConfig> {
-  const [row] = await db()
+  const [row] = await q
     .select()
     .from(configVersion)
     .where(
@@ -85,6 +92,36 @@ export async function getActiveConfig(
   if (row === undefined) {
     throw new Error(`Workspace ${workspaceId} has no active config version`);
   }
+  return parseConfigRow(workspaceId, row);
+}
+
+// The version a run recorded, active or not: a run uses the config it was
+// queued with.
+export async function getConfigVersion(
+  workspaceId: string,
+  configVersionId: string,
+): Promise<ActiveConfig> {
+  const [row] = await db()
+    .select()
+    .from(configVersion)
+    .where(
+      and(
+        eq(configVersion.workspaceId, workspaceId),
+        eq(configVersion.id, configVersionId),
+      ),
+    );
+  if (row === undefined) {
+    throw new Error(
+      `Config version ${configVersionId} not found in workspace ${workspaceId}`,
+    );
+  }
+  return parseConfigRow(workspaceId, row);
+}
+
+function parseConfigRow(
+  workspaceId: string,
+  row: typeof configVersion.$inferSelect,
+): ActiveConfig {
   const parsed = workspaceConfigSchema.safeParse(row.config);
   if (!parsed.success) {
     throw new Error(

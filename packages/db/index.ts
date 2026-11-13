@@ -5,10 +5,11 @@ export { closeDb, withTransaction, type Tx } from "./client";
 export { authAdapter, createSession } from "./access/auth";
 export {
   getActiveConfig,
+  getConfigVersion,
   saveConfigVersion,
   type ActiveConfig,
 } from "./access/config";
-export { insertEvent, type StoredEvent } from "./access/event";
+export { getEvent, insertEvent, type StoredEvent } from "./access/event";
 export { listConnectedKinds } from "./access/integration";
 export {
   createMembership,
@@ -21,6 +22,7 @@ export {
 export {
   createRun,
   finishRun,
+  getRun,
   startRun,
   type AgentRun,
   type FinishedStatus,

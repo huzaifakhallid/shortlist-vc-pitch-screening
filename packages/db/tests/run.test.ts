@@ -26,7 +26,9 @@ async function queuedRun() {
     triggerEventId: trigger.id,
     configVersionId: config.id,
   };
-  const { run } = await createRun(t.workspace.id, input);
+  const { run } = await withTransaction((tx) =>
+    createRun(tx, t.workspace.id, input),
+  );
   return { workspaceId: t.workspace.id, dealId, input, run };
 }
 
@@ -43,10 +45,14 @@ describe("agent runs", () => {
     const { workspaceId, dealId, input, run } = await queuedRun();
     expect(run).toMatchObject({ status: "QUEUED", dealId, workspaceId });
 
-    const again = await createRun(workspaceId, input);
+    const again = await withTransaction((tx) =>
+      createRun(tx, workspaceId, input),
+    );
     expect(again).toEqual({ run, created: false });
 
-    const other = await createRun(workspaceId, { ...input, agent: "research" });
+    const other = await withTransaction((tx) =>
+      createRun(tx, workspaceId, { ...input, agent: "research" }),
+    );
     expect(other.created).toBe(true);
     expect(other.run.id).not.toBe(run.id);
   });
@@ -58,11 +64,13 @@ describe("agent runs", () => {
     expect(resumed.status).toBe("RUNNING");
     expect(resumed.startedAt).toEqual(first.startedAt);
 
-    const finished = await finishRun(workspaceId, run.id, {
-      status: "SUCCEEDED",
-      output: { score: 72 },
-      ...usage,
-    });
+    const finished = await withTransaction((tx) =>
+      finishRun(tx, workspaceId, run.id, {
+        status: "SUCCEEDED",
+        output: { score: 72 },
+        ...usage,
+      }),
+    );
     expect(finished).toMatchObject({
       status: "SUCCEEDED",
       output: { score: 72 },
@@ -72,11 +80,13 @@ describe("agent runs", () => {
     expect(finished.finishedAt).toBeInstanceOf(Date);
 
     await expect(
-      finishRun(workspaceId, run.id, {
-        status: "FAILED",
-        error: "late",
-        ...usage,
-      }),
+      withTransaction((tx) =>
+        finishRun(tx, workspaceId, run.id, {
+          status: "FAILED",
+          error: "late",
+          ...usage,
+        }),
+      ),
     ).rejects.toThrow(`Cannot finish run ${run.id}: it is SUCCEEDED`);
     await expect(startRun(workspaceId, run.id, started)).rejects.toThrow(
       `Cannot start run ${run.id}: it is SUCCEEDED`,
@@ -93,15 +103,31 @@ describe("agent runs", () => {
     );
   });
 
-  it("refuses to finish a run that never started", async () => {
+  it("fails, but never succeeds, a run that never started", async () => {
     const { workspaceId, run } = await queuedRun();
     await expect(
-      finishRun(workspaceId, run.id, {
+      withTransaction((tx) =>
+        finishRun(tx, workspaceId, run.id, {
+          status: "SUCCEEDED",
+          output: {},
+          ...usage,
+        }),
+      ),
+    ).rejects.toThrow(`Cannot finish run ${run.id}: it is QUEUED`);
+
+    const failed = await withTransaction((tx) =>
+      finishRun(tx, workspaceId, run.id, {
         status: "FAILED",
         error: "early",
         ...usage,
       }),
-    ).rejects.toThrow(`Cannot finish run ${run.id}: it is QUEUED`);
+    );
+    expect(failed).toMatchObject({
+      status: "FAILED",
+      error: "early",
+      startedAt: null,
+    });
+    expect(failed.finishedAt).toBeInstanceOf(Date);
   });
 
   it("adds steps only while the run is running", async () => {
@@ -112,11 +138,13 @@ describe("agent runs", () => {
     );
     await startRun(workspaceId, run.id, started);
     await insertStep(workspaceId, run.id, step);
-    await finishRun(workspaceId, run.id, {
-      status: "SUCCEEDED",
-      output: {},
-      ...usage,
-    });
+    await withTransaction((tx) =>
+      finishRun(tx, workspaceId, run.id, {
+        status: "SUCCEEDED",
+        output: {},
+        ...usage,
+      }),
+    );
     await expect(insertStep(workspaceId, run.id, step)).rejects.toThrow(
       `Cannot add a step to run ${run.id}: it is SUCCEEDED`,
     );

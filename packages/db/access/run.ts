@@ -1,17 +1,20 @@
 import type { AgentKey, RunStatus } from "@shortlist/schemas";
-import { and, eq, sql } from "drizzle-orm";
-import { db, single } from "../client";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { db, single, type Tx } from "../client";
 import { agentRun, event } from "../schema";
 
 export type AgentRun = typeof agentRun.$inferSelect;
 
 // Idempotent per (agent, trigger event) (§11.2): a duplicate returns the
 // existing run with created: false. The deal comes from the trigger event.
+// Takes the coordinator's transaction, which also claims the event and
+// enqueues the run's job.
 export async function createRun(
+  tx: Tx,
   workspaceId: string,
   input: { agent: AgentKey; triggerEventId: string; configVersionId: string },
 ): Promise<{ run: AgentRun; created: boolean }> {
-  const [trigger] = await db()
+  const [trigger] = await tx
     .select({ dealId: event.dealId })
     .from(event)
     .where(
@@ -26,7 +29,7 @@ export async function createRun(
     );
   }
 
-  const inserted = await db()
+  const inserted = await tx
     .insert(agentRun)
     .values({
       workspaceId,
@@ -45,7 +48,7 @@ export async function createRun(
     return { run, created: true };
   }
 
-  const existing = await db()
+  const existing = await tx
     .select()
     .from(agentRun)
     .where(
@@ -59,6 +62,20 @@ export async function createRun(
     run: single(existing, `${input.agent} run for ${input.triggerEventId}`),
     created: false,
   };
+}
+
+export async function getRun(
+  workspaceId: string,
+  runId: string,
+): Promise<AgentRun> {
+  const [run] = await db()
+    .select()
+    .from(agentRun)
+    .where(and(eq(agentRun.id, runId), eq(agentRun.workspaceId, workspaceId)));
+  if (run === undefined) {
+    throw new Error(`Run ${runId} not found in workspace ${workspaceId}`);
+  }
+  return run;
 }
 
 // Explains why a guarded update matched no row. Not exported from the package.
@@ -139,8 +156,11 @@ export type RunResult =
   | ({ status: "SUCCEEDED"; output: unknown } & RunUsage)
   | ({ status: "FAILED"; error: string } & RunUsage);
 
-// RUNNING -> SUCCEEDED | FAILED, once.
+// RUNNING -> SUCCEEDED | FAILED, once. QUEUED -> FAILED too, so a run that
+// fails before it starts still records why. Takes the caller's transaction:
+// a run's output events are written in the same commit (§8.1).
 export async function finishRun(
+  tx: Tx,
   workspaceId: string,
   runId: string,
   result: RunResult,
@@ -149,7 +169,9 @@ export async function finishRun(
     result.status === "SUCCEEDED"
       ? { output: result.output, error: null }
       : { output: null, error: result.error };
-  const rows = await db()
+  const from: RunStatus[] =
+    result.status === "SUCCEEDED" ? ["RUNNING"] : ["QUEUED", "RUNNING"];
+  const rows = await tx
     .update(agentRun)
     .set({
       ...outcome,
@@ -164,7 +186,7 @@ export async function finishRun(
       and(
         eq(agentRun.id, runId),
         eq(agentRun.workspaceId, workspaceId),
-        eq(agentRun.status, "RUNNING"),
+        inArray(agentRun.status, from),
       ),
     )
     .returning();

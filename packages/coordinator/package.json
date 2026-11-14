@@ -1,0 +1,19 @@
+{
+  "name": "@shortlist/coordinator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shortlist/agents-shared": "workspace:*",
+    "@shortlist/db": "workspace:*",
+    "@shortlist/schemas": "workspace:*",
+    "pg-boss": "^12.38.1",
+    "zod": "^4.6.7"
+  }
+}

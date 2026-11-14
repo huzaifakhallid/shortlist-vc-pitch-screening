@@ -47,5 +47,37 @@ export default defineConfig(
       ],
     },
   },
+  {
+    // Agents read and write through AgentContext only (add-agent skill): the
+    // database's types, never its functions, the coordinator or integrations.
+    files: ["packages/agents/**"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@shortlist/db",
+              allowTypeImports: true,
+              message:
+                "Agents get data through AgentContext; only types may come from @shortlist/db.",
+            },
+            {
+              name: "@shortlist/integrations",
+              message:
+                "Agents use only the tools in their allowlist (§11.3), through AgentContext.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@shortlist/db/*", "@shortlist/integrations/*"],
+              message:
+                "Agents can't import coordinator-only database functions or integrations.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   prettier,
 );

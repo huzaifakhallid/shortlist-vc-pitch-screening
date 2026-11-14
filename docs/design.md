@@ -513,21 +513,26 @@ sequenceDiagram
 type AgentDefinition<In, Out> = {
   key: AgentKey;                       // "screening", "memo", ...
   listensTo: EventType[];
+  promptVersion: string | null;        // recorded on the run; null without a model call
+  model: string | null;
   needs: (deal: DealSnapshot) => In;   // throws MissingInputError if absent
   run: (input: In, ctx: AgentContext) => Promise<Out>;
   outputSchema: z.ZodType<Out>;
-  emits: (output: Out) => EventType[];
+  emits: (output: Out) => ShortlistEvent[];
   sideEffect?: SideEffectPolicy;       // e.g. { kind: "email", approval: "required" }
 };
 ```
 
 Each agent is one module with one responsibility. The coordinator knows nothing about what agents do; it only maps events to enabled agents.
 
+An emitted event's deal is the run's deal, never a value from agent or model output. Intake is the one exception, because its run starts before the deal exists: it gets a narrow path that creates the deal in the same transaction as `finishRun`, and its `deal.received` takes the deal id from that insert (milestone 2).
+
 ### 11.2 Runs and steps
 
 - Every execution is an **agent run** row: agent, deal, trigger event, configuration version, prompt version, model, input hash, output, tokens, cost, latency, status, error.
 - Multi-step agents (Screening, Diligence) save each step's output before the next. A retry resumes from the first unfinished step.
-- Provider errors (rate limits, 5xx, timeouts) retry the same step through pg-boss with exponential backoff, at most 3 times. The rate limiter in `llm.ts` (§14.4) is there to avoid 429s; it does not retry. Invalid model output gets one corrective retry (§7.2 step 7), then the run fails visibly.
+- The coordinator creates each run and enqueues its pg-boss job (job id = run id) in the transaction that claims the event and marks it processed, through pg-boss's `db` option, so a crash commits all of it or none of it. Each event in a claimed batch is dispatched in its own savepoint: one that fails rolls back alone, its error and attempt count are stored on the event (`dispatch_error`, `dispatch_attempts`), and after 3 failed attempts it is no longer claimed.
+- Provider errors (rate limits, 5xx, timeouts) retry the same step through pg-boss with exponential backoff, at most 3 times. Meanwhile the run stays `RUNNING` with the failed step recorded; any other error, or a provider error on the last attempt, finishes the run `FAILED`. The rate limiter in `llm.ts` (§14.4) is there to avoid 429s; it does not retry. Invalid model output gets one corrective retry (§7.2 step 7), then the run fails visibly.
 - Runs are idempotent per `(agent, trigger event)`: a duplicate event does not create a duplicate run. An event belongs to at most one deal, so the deal isn't part of the key. A manual re-run writes a new `agent.run_requested` event, which is why it is a new run.
 
 ### 11.3 Tools per agent
@@ -601,7 +606,7 @@ erDiagram
 | `deal` | workspace_id, company_id, stage, profile (jsonb), total_score, integrity_flag, assigned_partner_id |
 | `submission` | deal_id, channel, form_data, founder_email, deck_object_key, deck_sha256, raw_email_key |
 | `document` | deal_id, kind (`deck`/`financials`/`cap_table`/`other`), object_key, uploaded_by |
-| `event` | workspace_id, deal_id (nullable: §8.2), type, payload, created_at, processed_at |
+| `event` | workspace_id, deal_id (nullable: §8.2), type, payload, created_at, processed_at, dispatch_attempts, dispatch_error |
 | `agent_run` | workspace_id, deal_id (nullable: an Intake run starts before its deal exists), agent, trigger_event_id, config_version_id, prompt_version, model, input_hash, status, output (jsonb), tokens_in, tokens_out, cost_micros, latency_ms, error; unique (agent, trigger_event_id) |
 | `run_step` | run_id, step, output (jsonb), status |
 | `outbound_message` | run_id, deal_id, kind, draft, final_text, status, decided_by, sent_at |

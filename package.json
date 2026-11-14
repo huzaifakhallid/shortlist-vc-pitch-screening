@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @shortlist/web dev",
+    "worker": "pnpm --filter @shortlist/worker start",
     "typecheck": "tsc && pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run",

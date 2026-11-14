@@ -25,19 +25,24 @@ packages/agents/<agent>/
 export type AgentDefinition<In, Out> = {
   key: AgentKey;
   listensTo: EventType[];
-  needs: (deal: DealSnapshot) => In;            // throw MissingInputError("field") if absent
-  run: (input: In, ctx: AgentContext) => Promise<Out>;
+  promptVersion: string | null;                 // recorded on the run; null without a model call
+  model: string | null;
+  needs(deal: DealSnapshot): In;                // throw MissingInputError("field") if absent
+  run(input: In, ctx: AgentContext): Promise<Out>;
   outputSchema: z.ZodType<Out>;
-  emits: (output: Out) => EventType[];
+  emits(output: Out): ShortlistEvent[];
   sideEffect?: { kind: "email" | "crm" | "slack"; approval: "required" | "none" };
 };
 ```
 
-`AgentContext` provides: `workspaceId`, `config` (active version), `runStep(name, fn)` (persists step output and resumes from the first unfinished step), `llm` (model client), `storage`, `log`. Agents get nothing else.
+The types live in `packages/agents/shared/runtime.ts` (`sideEffect` arrives with Comms). Register the agent in `apps/worker/src/registry.ts`; the coordinator queues runs only for registered agents.
+
+`AgentContext` provides: `workspaceId`, `config` (the version the run was queued with), `runStep(name, schema, fn)` (persists step output and resumes from the first unfinished step), `llm` (model client), `storage` (with file storage), `log`. Agents get nothing else.
 
 ## Steps
 
-- `ctx.runStep("render", () => ...)` persists each step's output to `run_step`. Re-runs skip finished steps.
+- `ctx.runStep("render", schema, () => ...)` persists each step's output to `run_step`. A retried run skips finished steps and returns their saved output, parsed with `schema`. Step names are unique within a run.
+- Throw `ProviderError` (from `@shortlist/agents-shared`) only for provider rate limits, 5xx and timeouts: the job is retried and the run resumes. Any other error fails the run at once.
 - A step is either deterministic code or one model call. Never both in one function.
 - Provider errors (429, 5xx, timeout) are retried by the job runner. Don't add your own retry loops except the single corrective retry for invalid model output (`llm-call` skill).
 
@@ -45,6 +50,7 @@ export type AgentDefinition<In, Out> = {
 
 - Emit only event types from `packages/schemas/events.ts`. Adding a type means updating that file and design §8.2.
 - The coordinator queues jobs for **enabled** agents only. Idempotency key: `(agent, triggerEventId)`.
+- An emitted event's `dealId` comes from the run, never from agent or model output. Intake (milestone 2) is the one exception: it creates the deal in the same transaction as `finishRun`, and its `deal.received` takes the deal id from that insert.
 
 ## Dependencies
 

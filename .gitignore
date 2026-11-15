@@ -1,13 +1,56 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build output
 .next/
+out/
 dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Tests
 coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Environment and secrets (never commit real values; document names in .env.example)
 .env
 .env.*
 !.env.example
-.claude/settings.local.json
+*.pem
+*.key
+*.p12
+*service-account*.json
+*credentials*.json
+
+# Evaluation scratch output (reports themselves are committed)
 eval/reports/tmp/
+
+# Local tools and caches
+.turbo/
+.vercel/
+.eslintcache
+*.bundle
+
+# Claude Code: personal settings only (shared .claude/ is tracked)
+.claude/settings.local.json
+
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# OS
 .DS_Store
-next-env.d.ts
-*.tsbuildinfo
+Thumbs.db
+desktop.ini

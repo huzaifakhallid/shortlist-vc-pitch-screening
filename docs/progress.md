@@ -18,7 +18,7 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Worker gap: a process that dies mid-job (the job expires) leaves the run `RUNNING`. Add a dead-letter handler that fails the run before milestone 2 agents ship
 - [ ] Coordinator: Diligence listens to `deal.stage_changed` only when `to` is `DILIGENCE` (§8.2); add that payload condition to `packages/coordinator/routing.ts` with the Diligence agent (milestone 5)
 - [x] Seed script (`pnpm db:seed`): demo workspace "Kestrel Ventures" (fictional) with two partners, an analyst and an admin, config v1, Slack and HubSpot off. Leaves an existing `kestrel` workspace unchanged (no FK cascades, so the milestone 6 nightly reset needs its own delete path)
-- [ ] CI: GitHub Actions with a Postgres service container
+- [x] CI: GitHub Actions with a Postgres service container (typecheck, lint, format, tests, migrations apply + match schema, web build; eval smoke and deploy steps arrive in milestone 6)
 
 ## Milestone 2 — Intake + Screening
 - [ ] `packages/agents/shared/llm.ts`: Gemini SDK, Zod → JSON Schema, inline PNG parts, `LLM_RPM` rate limiter; `models.ts` with model IDs + price table (§14.4)

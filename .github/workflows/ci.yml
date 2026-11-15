@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: shortlist
+          POSTGRES_PASSWORD: shortlist
+          POSTGRES_DB: shortlist
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shortlist"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # CI-only values for a throwaway database. No real secrets.
+    env:
+      DATABASE_URL: postgres://shortlist:shortlist@localhost:5432/shortlist
+      TEST_DATABASE_URL: postgres://shortlist:shortlist@localhost:5432/shortlist_test
+      AUTH_SECRET: ci-only-auth-secret-not-used-anywhere-else-000
+      APP_URL: http://localhost:3000
+      DEMO_LOGINS: "false"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.13.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Create test database
+        run: psql "$DATABASE_URL" -c "CREATE DATABASE shortlist_test"
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm exec prettier --check .
+      - run: pnpm test
+
+      - name: Migrations apply
+        run: pnpm db:migrate
+
+      - name: Migrations match the schema
+        run: |
+          pnpm db:generate
+          git diff --exit-code -- packages/db/migrations
+          test -z "$(git status --porcelain -- packages/db/migrations)"
+
+      - run: pnpm --filter @shortlist/web build

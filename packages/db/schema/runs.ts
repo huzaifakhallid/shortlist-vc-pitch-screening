@@ -149,6 +149,11 @@ export const runStep = pgTable(
   (t) => [
     runRef("run_step_run_fk", t),
     index("run_step_run_id_seq_idx").on(t.runId, t.seq),
+    // The daily spend cap sums a workspace's step costs since UTC midnight.
+    index("run_step_workspace_id_created_at_idx").on(
+      t.workspaceId,
+      t.createdAt,
+    ),
   ],
 );
 

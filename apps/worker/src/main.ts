@@ -29,6 +29,7 @@ const TICK_MS = 2000;
 const deps: RunDeps = {
   registry,
   llmForRun: geminiClients({ apiKey: env.GEMINI_API_KEY, rpm: env.LLM_RPM }),
+  keyTier: env.GEMINI_KEY_TIER,
   log: (message) => {
     console.log(message);
   },
@@ -97,6 +98,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 console.log(
-  `Worker running: ${String(registry.length)} agents registered (${registry.map((a) => a.key).join(", ") || "none"}), coordinator tick every ${String(TICK_MS)} ms`,
+  `Worker running: ${String(registry.length)} agents registered (${registry.map((a) => a.key).join(", ") || "none"}), ${env.GEMINI_KEY_TIER} Gemini key, coordinator tick every ${String(TICK_MS)} ms`,
 );
 ticking = tick();

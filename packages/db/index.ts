@@ -34,9 +34,11 @@ export {
   type RunStep,
   type StepUsage,
 } from "./access/step";
+export { getSpendTodayMicros } from "./access/spend";
 export { createUser, getUserByEmail, type User } from "./access/user";
 export {
   createWorkspace,
+  getWorkspace,
   getWorkspaceBySlug,
   type Workspace,
 } from "./access/workspace";

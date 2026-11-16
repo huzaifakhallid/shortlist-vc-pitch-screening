@@ -17,6 +17,7 @@ import {
   createTestWorkspace,
   getTestEventRow,
   listTestRuns,
+  recordTestSpend,
   saveTestConfig,
   type TestWorkspace,
 } from "../../db/tests/helpers";
@@ -216,5 +217,64 @@ describe("dispatchEvents", () => {
       runs: 2,
       failed: 0,
     });
+  });
+
+  it("queues no run once the workspace reached its daily spend cap (§15.5)", async () => {
+    const t = await createTestWorkspace("kestrel");
+    const config = configFor(t.partner.id);
+    config.dailySpendCapMicros = 1_000;
+    const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
+    await recordTestSpend(t.workspace.id, saved.id, 1_000);
+    const event = await dealReceived(t);
+
+    expect(await dispatchEvents(boss, registry)).toEqual({
+      events: 1,
+      runs: 0,
+      failed: 1,
+    });
+    // Only the run that recorded the spend.
+    expect((await listTestRuns(t.workspace.id)).map((r) => r.agent)).toEqual([
+      "intake",
+    ]);
+    expect(await boss.findJobs(AGENT_RUN_QUEUE)).toEqual([]);
+    expect(await getTestEventRow(event.id)).toMatchObject({
+      processedAt: null,
+      dispatchAttempts: 1,
+      dispatchError: `Workspace ${t.workspace.id} reached its daily AI spend cap: 1000 of 1000 micro-dollars spent today (UTC)`,
+    });
+  });
+
+  it("queues runs while the workspace is under its cap, counting only its own spend", async () => {
+    const other = await createTestWorkspace("other");
+    const otherConfig = await saveTestConfig(other);
+    await recordTestSpend(other.workspace.id, otherConfig.id, 10_000_000);
+    const t = await createTestWorkspace("kestrel");
+    const config = configFor(t.partner.id);
+    config.dailySpendCapMicros = 1_000;
+    const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
+    await recordTestSpend(t.workspace.id, saved.id, 999);
+    await dealReceived(t);
+
+    expect(await dispatchEvents(boss, registry)).toEqual({
+      events: 1,
+      runs: 2,
+      failed: 0,
+    });
+  });
+
+  it("processes an event no enabled agent takes, even over the cap", async () => {
+    const t = await createTestWorkspace("kestrel");
+    const config = configFor(t.partner.id);
+    config.dailySpendCapMicros = 1_000;
+    const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
+    await recordTestSpend(t.workspace.id, saved.id, 5_000);
+    const event = await dealReceived(t);
+
+    expect(await dispatchEvents(boss, [])).toEqual({
+      events: 1,
+      runs: 0,
+      failed: 0,
+    });
+    expect((await getTestEventRow(event.id)).processedAt).toBeInstanceOf(Date);
   });
 });

@@ -32,9 +32,12 @@ describe("seedDemoWorkspace", () => {
     expect(result.workspace).toMatchObject({
       slug: DEMO_SLUG,
       name: "Kestrel Ventures",
+      // Synthetic data only, so a free-tier Gemini key may run it (§14.4).
+      synthetic: true,
     });
     const active = await getActiveConfig(result.workspace.id);
     expect(active.version).toBe(1);
+    expect(active.config.dailySpendCapMicros).toBe(5_000_000);
     expect(active.config.agents.pipeline.crm).toBeNull();
     expect(active.config.agents.pipeline.slackChannel).toBeNull();
 
@@ -82,6 +85,7 @@ describe("seedDemoWorkspace", () => {
       slug: DEMO_SLUG,
       name: "Kestrel Ventures",
       intakeAddress: `pitches+${DEMO_SLUG}@in.shortlist.dev`,
+      synthetic: true,
     });
 
     await expect(seedDemoWorkspace()).rejects.toThrow(

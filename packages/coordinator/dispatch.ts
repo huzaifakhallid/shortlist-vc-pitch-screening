@@ -1,4 +1,8 @@
-import { sanitiseError, type AgentRegistry } from "@shortlist/agents-shared";
+import {
+  assertUnderSpendCap,
+  sanitiseError,
+  type AgentRegistry,
+} from "@shortlist/agents-shared";
 import {
   createRun,
   withTransaction,
@@ -12,6 +16,7 @@ import {
   markEventProcessed,
   recordDispatchFailure,
   selectActiveConfig,
+  selectSpendTodayMicros,
 } from "@shortlist/db/coordinator";
 import type { PgBoss } from "pg-boss";
 import { AGENT_RUN_QUEUE, type AgentRunJob } from "./queue";
@@ -70,6 +75,8 @@ export async function dispatchEvents(
 }
 
 // Creates a run per enabled listening agent and enqueues each new run's job.
+// A workspace that has reached its daily spend cap (§15.5) gets no runs: the
+// SpendCapReachedError fails the event's dispatch, which records why on it.
 async function dispatchEvent(
   sp: Tx,
   boss: PgBoss,
@@ -77,8 +84,16 @@ async function dispatchEvent(
   event: StoredEvent,
   config: ActiveConfig,
 ): Promise<number> {
+  const agents = agentsFor(event.type, config.config, registry);
+  if (agents.length > 0) {
+    assertUnderSpendCap(
+      event.workspaceId,
+      await selectSpendTodayMicros(sp, event.workspaceId),
+      config.config.dailySpendCapMicros,
+    );
+  }
   let created = 0;
-  for (const agent of agentsFor(event.type, config.config, registry)) {
+  for (const agent of agents) {
     const result = await createRun(sp, event.workspaceId, {
       agent: agent.key,
       triggerEventId: event.id,

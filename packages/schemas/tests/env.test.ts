@@ -42,11 +42,12 @@ describe("parseEnv", () => {
     ).toBe(true);
   });
 
-  it("needs the database, the Gemini key and LLM_RPM for the worker", () => {
+  it("needs the database, the Gemini key, LLM_RPM and the key tier for the worker", () => {
     const worker = {
       DATABASE_URL: validWebEnv.DATABASE_URL,
       GEMINI_API_KEY: "test-key",
       LLM_RPM: "10",
+      GEMINI_KEY_TIER: "free",
     };
     expect(parseEnv(workerEnvSchema, worker)).toEqual({
       ...worker,
@@ -55,12 +56,29 @@ describe("parseEnv", () => {
     expect(() =>
       parseEnv(workerEnvSchema, { DATABASE_URL: validWebEnv.DATABASE_URL }),
     ).toThrow(
-      "Missing or invalid environment variables: GEMINI_API_KEY, LLM_RPM",
+      "Missing or invalid environment variables: GEMINI_API_KEY, LLM_RPM, GEMINI_KEY_TIER",
     );
     for (const rpm of ["0", "", "2.5", "ten"]) {
       expect(() =>
         parseEnv(workerEnvSchema, { ...worker, LLM_RPM: rpm }),
       ).toThrow("Missing or invalid environment variables: LLM_RPM");
+    }
+  });
+
+  it("takes only free or paid as GEMINI_KEY_TIER", () => {
+    const worker = {
+      DATABASE_URL: validWebEnv.DATABASE_URL,
+      GEMINI_API_KEY: "test-key",
+      LLM_RPM: "10",
+    };
+    expect(
+      parseEnv(workerEnvSchema, { ...worker, GEMINI_KEY_TIER: "paid" })
+        .GEMINI_KEY_TIER,
+    ).toBe("paid");
+    for (const tier of ["", "FREE", "billing", "true"]) {
+      expect(() =>
+        parseEnv(workerEnvSchema, { ...worker, GEMINI_KEY_TIER: tier }),
+      ).toThrow("Missing or invalid environment variables: GEMINI_KEY_TIER");
     }
   });
 });

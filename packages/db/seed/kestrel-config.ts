@@ -116,5 +116,8 @@ export function kestrelConfig(partners: {
       devtools: partners.fintechAndDevtools,
     },
     defaultPartnerId: partners.fintechAndDevtools,
+    // $5 a day: many synthetic decks at paid list price (§19), small enough
+    // to stop a runaway loop early.
+    dailySpendCapMicros: 5_000_000,
   };
 }

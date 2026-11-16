@@ -135,6 +135,24 @@ describe("workspaceConfigSchema (stage 1)", () => {
     ]);
   });
 
+  it("requires a positive whole daily spend cap in micro-dollars", () => {
+    const missing: Record<string, unknown> = { ...validConfig() };
+    delete missing.dailySpendCapMicros;
+    expect(issuesOf(missing)).toEqual([
+      {
+        path: ["dailySpendCapMicros"],
+        message: "Invalid input: expected number, received undefined",
+      },
+    ]);
+    for (const cap of [0, -1, 2.5]) {
+      expect(
+        issuesOf({ ...validConfig(), dailySpendCapMicros: cap }).map(
+          (issue) => issue.path,
+        ),
+      ).toEqual([["dailySpendCapMicros"]]);
+    }
+  });
+
   it("rejects unknown keys", () => {
     expect(issuesOf({ ...validConfig(), extra: true })).toEqual([
       { path: [], message: 'Unrecognized key: "extra"' },

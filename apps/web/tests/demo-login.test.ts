@@ -23,6 +23,7 @@ describe("startDemoSession", () => {
       slug: "kestrel",
       name: "Kestrel Ventures",
       intakeAddress: "pitches+kestrel@in.shortlist.dev",
+      synthetic: true,
       createdAt: new Date(),
     });
     vi.mocked(db.getUserByEmail).mockResolvedValue({

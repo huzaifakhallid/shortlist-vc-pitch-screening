@@ -37,3 +37,4 @@ export {
   type UntrustedPart,
   type WorkspaceContextPart,
 } from "./runtime";
+export { assertUnderSpendCap, SpendCapReachedError } from "./spend";

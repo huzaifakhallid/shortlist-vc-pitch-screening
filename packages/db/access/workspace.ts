@@ -9,6 +9,8 @@ export async function createWorkspace(input: {
   slug: string;
   name: string;
   intakeAddress: string;
+  // Stated on every create: a free-tier key runs synthetic workspaces only.
+  synthetic: boolean;
 }): Promise<Workspace> {
   const rows = await db().insert(workspace).values(input).returning();
   return single(rows, `workspace "${input.slug}"`);
@@ -23,4 +25,15 @@ export async function getWorkspaceBySlug(
     .from(workspace)
     .where(eq(workspace.slug, slug));
   return row ?? null;
+}
+
+export async function getWorkspace(workspaceId: string): Promise<Workspace> {
+  const [row] = await db()
+    .select()
+    .from(workspace)
+    .where(eq(workspace.id, workspaceId));
+  if (row === undefined) {
+    throw new Error(`Workspace ${workspaceId} not found`);
+  }
+  return row;
 }

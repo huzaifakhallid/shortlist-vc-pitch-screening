@@ -1,0 +1,2 @@
+ALTER TABLE "workspace" ADD COLUMN "synthetic" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "run_step_workspace_id_created_at_idx" ON "run_step" USING btree ("workspace_id","created_at");

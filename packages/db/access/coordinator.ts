@@ -4,8 +4,10 @@ import { single, type Tx } from "../client";
 import { event } from "../schema";
 import { toStoredEvent, type StoredEvent } from "./event";
 
-// The coordinator reads the active config inside its claiming transaction.
+// The coordinator reads the active config and the day's spend inside its
+// claiming transaction.
 export { selectActiveConfig } from "./config";
+export { selectSpendTodayMicros } from "./spend";
 
 // Coordinator-only functions, exported as "@shortlist/db/coordinator" and
 // banned from apps/web by ESLint.

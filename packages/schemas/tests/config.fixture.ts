@@ -109,5 +109,6 @@ export function validConfig(): WorkspaceConfig {
     },
     routing: { fintech: "user_a", climate: "user_b", devtools: "user_a" },
     defaultPartnerId: "user_a",
+    dailySpendCapMicros: 5_000_000,
   };
 }

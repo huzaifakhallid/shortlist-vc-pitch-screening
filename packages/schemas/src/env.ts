@@ -7,6 +7,9 @@ const appUrl = z.url({ protocol: /^https?$/ });
 // An explicit "true" or "false": a flag that opens sign-in has no default.
 const flag = z.enum(["true", "false"]).transform((value) => value === "true");
 
+export const geminiKeyTierSchema = z.enum(["free", "paid"]);
+export type GeminiKeyTier = z.infer<typeof geminiKeyTierSchema>;
+
 export const webEnvSchema = z.object({
   DATABASE_URL: databaseUrl,
   AUTH_SECRET: authSecret,
@@ -22,6 +25,10 @@ export const workerEnvSchema = z.object({
   GEMINI_API_KEY: z.string().min(1),
   // Model requests per minute for this worker process (§14.4).
   LLM_RPM: z.coerce.number().int().positive(),
+  // The Gemini key's tier. On "free" the worker refuses runs for any
+  // workspace that isn't synthetic (§14.4, §15.4). No default: the operator
+  // states it.
+  GEMINI_KEY_TIER: geminiKeyTierSchema,
 });
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 

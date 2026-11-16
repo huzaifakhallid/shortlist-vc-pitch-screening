@@ -16,11 +16,16 @@ import {
 import {
   insertEvent,
   listSteps,
+  saveConfigVersion,
   withTransaction,
   type AgentRun,
 } from "@shortlist/db";
 import { claimUnprocessedEventsAcrossWorkspaces } from "@shortlist/db/coordinator";
-import type { EventType, ShortlistEvent } from "@shortlist/schemas";
+import type {
+  EventType,
+  GeminiKeyTier,
+  ShortlistEvent,
+} from "@shortlist/schemas";
 import type { PgBoss } from "pg-boss";
 import {
   afterAll,
@@ -35,10 +40,11 @@ import {
 import { z } from "zod";
 import { startTestBoss } from "../../../packages/coordinator/tests/boss";
 import {
+  configFor,
   createTestDeal,
   createTestWorkspace,
   listTestRuns,
-  saveTestConfig,
+  recordTestSpend,
 } from "../../../packages/db/tests/helpers";
 import {
   executeRun,
@@ -101,14 +107,17 @@ function testAgent(options: {
 }
 
 // A model client per attempt whose every call spends 100 tokens in, 10 out
-// and 50 micros, then returns 4. `signals` collects each attempt's signal.
+// and 50 micros, then returns 4. `signals` collects each attempt's signal;
+// `calls` counts the calls that reached the client.
 function stubLlm() {
   const signals: AbortSignal[] = [];
+  const calls = { count: 0 };
   const llmForRun = (signal: AbortSignal): LlmClient => {
     signals.push(signal);
     const usage = { tokensIn: 0, tokensOut: 0, costMicros: 0 };
     return {
       structured: <T>(request: StructuredRequest<T>) => {
+        calls.count += 1;
         usage.tokensIn += 100;
         usage.tokensOut += 10;
         usage.costMicros += 50;
@@ -117,18 +126,19 @@ function stubLlm() {
       usage: () => ({ ...usage }),
     };
   };
-  return { llmForRun, signals };
+  return { llmForRun, signals, calls };
 }
 
-function depsFor(agent: TestAgent) {
+function depsFor(agent: TestAgent, keyTier: GeminiKeyTier = "paid") {
   const logs: string[] = [];
   const llm = stubLlm();
   const deps: RunDeps = {
     registry: [agent],
     llmForRun: llm.llmForRun,
+    keyTier,
     log: (message) => logs.push(message),
   };
-  return { deps, logs, signals: llm.signals };
+  return { deps, logs, signals: llm.signals, modelCalls: llm.calls };
 }
 
 // One model call through ctx.llm.
@@ -150,12 +160,21 @@ const screened: ShortlistEvent = { type: "deal.screened", payload: {} };
 const firstAttempt = attempt(0);
 
 // Inserts `trigger` in a new workspace and dispatches it to `deps`' agent.
+// The workspace isn't synthetic unless asked, and its config's daily spend
+// cap is 5,000,000 micros unless given.
 async function dispatchedRun(
   deps: RunDeps,
   trigger: "deal.received" | "email.received" = "deal.received",
+  workspace: { synthetic?: boolean; dailySpendCapMicros?: number } = {},
 ) {
-  const t = await createTestWorkspace("kestrel");
-  await saveTestConfig(t);
+  const t = await createTestWorkspace("kestrel", {
+    synthetic: workspace.synthetic ?? false,
+  });
+  const config = configFor(t.partner.id);
+  if (workspace.dailySpendCapMicros !== undefined) {
+    config.dailySpendCapMicros = workspace.dailySpendCapMicros;
+  }
+  await saveConfigVersion(t.workspace.id, config, t.partner.id);
   const dealId =
     trigger === "deal.received" ? await createTestDeal(t.workspace.id) : null;
   await withTransaction((tx) =>
@@ -565,5 +584,144 @@ describe("expired attempts", () => {
       startedAt: null,
       latencyMs: null,
     });
+  });
+});
+
+describe("Gemini key tier (§14.4)", () => {
+  it("refuses a run in a workspace that isn't synthetic on a free key", async () => {
+    const { agent, calls } = testAgent({
+      listensTo: "deal.received",
+      score: (ctx) => callModel(ctx),
+      emits: screened,
+    });
+    const { deps, logs, modelCalls } = depsFor(agent, "free");
+    const { run, job } = await dispatchedRun(deps);
+
+    await executeRun(job, firstAttempt, deps);
+
+    const error = `Run refused: this worker's Gemini key is free tier (GEMINI_KEY_TIER=free), which runs synthetic workspaces only, and workspace ${run.workspaceId} isn't synthetic`;
+    expect(await reload(run)).toMatchObject({
+      status: "FAILED",
+      startedAt: null,
+      error,
+    });
+    expect(await stepRows(run)).toEqual([]);
+    expect(calls).toEqual({ read: 0, score: 0 });
+    expect(modelCalls.count).toBe(0);
+    expect(logs).toContain(`Run ${run.id} (screening) failed: ${error}`);
+  });
+
+  it("runs a synthetic workspace on a free key", async () => {
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: (ctx) => callModel(ctx),
+      emits: screened,
+    });
+    const { deps, modelCalls } = depsFor(agent, "free");
+    const { run, job } = await dispatchedRun(deps, "deal.received", {
+      synthetic: true,
+    });
+
+    await executeRun(job, firstAttempt, deps);
+
+    expect(await reload(run)).toMatchObject({
+      status: "SUCCEEDED",
+      output: { score: 7 },
+    });
+    expect(modelCalls.count).toBe(1);
+  });
+
+  it("runs a workspace that isn't synthetic on a paid key", async () => {
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: (ctx) => callModel(ctx),
+      emits: screened,
+    });
+    const { deps } = depsFor(agent, "paid");
+    const { run, job } = await dispatchedRun(deps);
+
+    await executeRun(job, firstAttempt, deps);
+
+    expect((await reload(run)).status).toBe("SUCCEEDED");
+  });
+});
+
+describe("daily spend cap (§15.5)", () => {
+  it("fails the run, without calling the model, once today's spend reached the cap", async () => {
+    const { agent, calls } = testAgent({
+      listensTo: "deal.received",
+      score: (ctx) => callModel(ctx),
+      emits: screened,
+    });
+    const { deps, logs, modelCalls } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps, "deal.received", {
+      dailySpendCapMicros: 1_000,
+    });
+    // Spent by other runs today, after this one was queued.
+    await recordTestSpend(run.workspaceId, run.configVersionId, 1_000);
+
+    await executeRun(job, firstAttempt, deps);
+
+    const error = `Workspace ${run.workspaceId} reached its daily AI spend cap: 1000 of 1000 micro-dollars spent today (UTC)`;
+    expect(await reload(run)).toMatchObject({
+      status: "FAILED",
+      error,
+      output: null,
+      costMicros: 0,
+    });
+    expect(await stepRows(run)).toEqual([
+      ["read", "SUCCEEDED", { pages: 3 }],
+      ["score", "FAILED", { error }],
+    ]);
+    expect(calls).toEqual({ read: 1, score: 1 });
+    expect(modelCalls.count).toBe(0);
+    expect(logs).toContain(`Run ${run.id} (screening) failed: ${error}`);
+  });
+
+  it("counts the running step's unsaved spend before each model call", async () => {
+    // Each call costs 50: with a cap of 100 the first two calls go through
+    // and the third is refused, though nothing is saved yet.
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: async (ctx) =>
+        (await callModel(ctx)) +
+        (await callModel(ctx)) +
+        (await callModel(ctx)),
+      emits: screened,
+    });
+    const { deps, modelCalls } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps, "deal.received", {
+      dailySpendCapMicros: 100,
+    });
+
+    await executeRun(job, firstAttempt, deps);
+
+    expect(modelCalls.count).toBe(2);
+    const failed = await reload(run);
+    expect(failed).toMatchObject({ status: "FAILED", costMicros: 100 });
+    expect(failed.error).toBe(
+      `Workspace ${run.workspaceId} reached its daily AI spend cap: 100 of 100 micro-dollars spent today (UTC)`,
+    );
+  });
+
+  it("runs while today's spend is under the cap", async () => {
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: (ctx) => callModel(ctx),
+      emits: screened,
+    });
+    const { deps, modelCalls } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps, "deal.received", {
+      dailySpendCapMicros: 1_000,
+    });
+    await recordTestSpend(run.workspaceId, run.configVersionId, 949);
+
+    await executeRun(job, firstAttempt, deps);
+
+    expect(await reload(run)).toMatchObject({
+      status: "SUCCEEDED",
+      costMicros: 50,
+    });
+    expect(modelCalls.count).toBe(1);
   });
 });

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  assertUnderSpendCap,
   describeIssues,
   ProviderError,
   sanitiseError,
@@ -16,6 +17,8 @@ import {
   getConfigVersion,
   getEvent,
   getRun,
+  getSpendTodayMicros,
+  getWorkspace,
   insertEvent,
   insertStep,
   listSteps,
@@ -23,13 +26,18 @@ import {
   withTransaction,
   type RunStep,
 } from "@shortlist/db";
+import type { GeminiKeyTier } from "@shortlist/schemas";
 import type { JobWithMetadata } from "pg-boss";
 import { z } from "zod";
+import { assertKeyTierAllows } from "./key-tier";
 
 export type RunDeps = {
   registry: AgentRegistry;
   // A fresh client per attempt, bound to the attempt's abort signal.
   llmForRun: (signal: AbortSignal) => LlmClient;
+  // The Gemini key's tier (env GEMINI_KEY_TIER): "free" runs synthetic
+  // workspaces only (§14.4).
+  keyTier: GeminiKeyTier;
   log: (message: string) => void;
 };
 
@@ -47,7 +55,9 @@ export type Attempt = {
 // aborted: pg-boss has already failed the job, and retries it or hands it to
 // the dead-letter handler. Any other error, or the last attempt's, finishes
 // the run FAILED (from QUEUED if it never started) with the sanitised error.
-// If recording that fails too, the job fails.
+// If recording that fails too, the job fails. A free-tier key refuses a
+// workspace that isn't synthetic before the run starts, and every model call
+// is refused once the workspace reached its daily spend cap (§15.5).
 export async function executeRun(
   job: AgentRunJob,
   attempt: Attempt,
@@ -67,6 +77,7 @@ export async function executeRun(
   const latencyMs = () => Date.now() - startedAt;
 
   try {
+    assertKeyTierAllows(deps.keyTier, await getWorkspace(workspaceId));
     const agent = deps.registry.find((a) => a.key === run.agent);
     if (agent === undefined) {
       throw new Error(
@@ -93,6 +104,7 @@ export async function executeRun(
       runId,
       deps.llmForRun(attempt.signal),
       attempt.signal,
+      config.dailySpendCapMicros,
     );
     const ctx: AgentContext = {
       workspaceId,
@@ -170,12 +182,15 @@ function parseOutput(agent: AnyAgentDefinition, output: unknown): unknown {
 // attempt return their saved output; the others run and are saved,
 // SUCCEEDED or FAILED, with the model usage they spent. Steps run one at a
 // time and the model is called only inside one, so a step's usage is the
-// attempt client's usage across it.
+// attempt client's usage across it. Before each model call, the workspace's
+// spend today (saved steps plus the running step's unsaved usage) must be
+// under `dailySpendCapMicros`, the cap in the run's config (§15.5).
 async function stepRunner(
   workspaceId: string,
   runId: string,
   client: LlmClient,
   signal: AbortSignal,
+  dailySpendCapMicros: number,
 ): Promise<Pick<AgentContext, "runStep" | "llm">> {
   // In insertion order, so the latest row for a step wins.
   const saved = new Map<string, RunStep>();
@@ -184,6 +199,8 @@ async function stepRunner(
   }
   const seen = new Set<string>();
   let running: string | null = null;
+  // The client's usage when the running step started.
+  let stepStart: LlmUsage = client.usage();
 
   const runStep = async <T>(
     name: string,
@@ -214,6 +231,7 @@ async function stepRunner(
     signal.throwIfAborted();
     const before = client.usage();
     const spent = () => usageSince(before, client.usage());
+    stepStart = before;
     running = name;
     let output: T;
     try {
@@ -247,14 +265,20 @@ async function stepRunner(
   };
 
   const llm: LlmClient = {
-    structured: (request) =>
-      running === null
-        ? Promise.reject(
-            new Error(
-              `Model call for ${request.promptVersion} outside a step in run ${runId}; call ctx.llm inside ctx.runStep`,
-            ),
-          )
-        : client.structured(request),
+    structured: async (request) => {
+      if (running === null) {
+        throw new Error(
+          `Model call for ${request.promptVersion} outside a step in run ${runId}; call ctx.llm inside ctx.runStep`,
+        );
+      }
+      const unsaved = usageSince(stepStart, client.usage()).costMicros;
+      assertUnderSpendCap(
+        workspaceId,
+        (await getSpendTodayMicros(workspaceId)) + unsaved,
+        dailySpendCapMicros,
+      );
+      return client.structured(request);
+    },
     usage: () => client.usage(),
   };
 

@@ -37,6 +37,9 @@ export async function seedDemoWorkspace(): Promise<SeedResult> {
     slug: DEMO_SLUG,
     name: "Kestrel Ventures",
     intakeAddress: `pitches+${DEMO_SLUG}@in.shortlist.dev`,
+    // The fictional demo fund holds synthetic decks only, so a free-tier
+    // Gemini key may run it (§14.4).
+    synthetic: true,
   });
 
   const users: Record<DemoMemberKey, User> = {

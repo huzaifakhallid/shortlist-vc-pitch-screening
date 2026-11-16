@@ -24,6 +24,9 @@ export const workspace = pgTable("workspace", {
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   intakeAddress: text("intake_address").notNull().unique(),
+  // Holds only synthetic data (the demo fund). A free-tier Gemini key runs
+  // only these workspaces (§14.4, §15.4). False unless set when created.
+  synthetic: boolean("synthetic").notNull().default(false),
   createdAt: createdAt(),
 });
 

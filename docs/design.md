@@ -597,7 +597,7 @@ erDiagram
 
 | Table | Key columns |
 |---|---|
-| `workspace` | id, slug, name, intake_address |
+| `workspace` | id, slug, name, intake_address, synthetic (holds only synthetic data; a free-tier Gemini key runs only these, §14.4) |
 | `user`, `membership` | user email; membership(user_id, workspace_id, role) |
 | `account`, `session`, `verification_token` | The tables Auth.js requires for magic links; shape set by its Drizzle adapter |
 | `api_key` | workspace_id, name, key_hash, scopes, created_by, last_used_at, revoked_at |
@@ -669,7 +669,8 @@ One versioned JSON document per workspace, validated by one schema at save time:
     "diligence": { "enabled": false, "checklist": ["Financial model", "Cap table", "Customer references", "Incorporation docs"] }
   },
   "routing": { "fintech": "user_a", "climate": "user_b", "devtools": "user_a" },
-  "defaultPartnerId": "user_a"
+  "defaultPartnerId": "user_a",
+  "dailySpendCapMicros": 5000000
 }
 ```
 
@@ -681,6 +682,8 @@ One versioned JSON document per workspace, validated by one schema at save time:
 | 2. Workspace | Routing to a non-partner; an enabled integration-backed setting (CRM, Slack) without a connected integration | The save path, against the database |
 
 `pipeline.crm` and `pipeline.slackChannel` may be `null`, meaning that integration isn't in use. The example above shows a fully connected fund. The seeded demo workspace sets both to `null`, so it passes stage 2 until sandboxes are connected in milestone 4.
+
+`dailySpendCapMicros` is the daily AI spend cap (§15.5): the workspace's model spend per UTC day, in integer micro-dollars like every cost (§12). It is required and positive; the seeded demo workspace sets $5.
 
 Saving creates a new version. Every agent run records the version it used, so "why did this deal score 72 in March?" always has an answer.
 
@@ -768,7 +771,7 @@ Hidden prompt injections already appear in about 1% of real-world resumes [7]; p
 ### 15.5 Abuse and spend
 
 - Rate limits per IP and per workspace on the form and API; a honeypot field on the form.
-- Daily AI spend cap per workspace: when reached, the coordinator pauses that workspace's queue and alerts admins.
+- Daily AI spend cap per workspace (`dailySpendCapMicros`, §13). Spend is the sum of the workspace's `run_step.cost_micros` since 00:00 UTC. The coordinator checks it before it queues a run: an event that would queue runs fails its dispatch with the reason in `dispatch_error` (§11.2). The worker checks it before each model call (saved spend plus the running step's): the run fails with the reason in `agent_run.error`. A queued run keeps the cap of the config version it was queued with. It is an abuse cap, not a hard ceiling: the check and the spend aren't atomic, so it can be exceeded by about one model call (with its corrective retry) per concurrent run. Pausing the queue until the next UTC day, instead of dropping the event after its dispatch attempts, and alerting admins are still to come.
 
 ---
 

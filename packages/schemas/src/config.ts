@@ -100,6 +100,10 @@ export const workspaceConfigSchema = z
     agents: agentsSchema,
     routing: z.record(nonEmpty, nonEmpty),
     defaultPartnerId: nonEmpty,
+    // Daily AI spend cap (§15.5): the workspace's model spend (run_step
+    // cost) per UTC day, in integer micro-dollars (§12). Reaching it stops
+    // new runs and model calls until the next UTC day.
+    dailySpendCapMicros: z.int().positive(),
   })
   .superRefine((config, ctx) => {
     const totalWeight = config.rubric.reduce((sum, c) => sum + c.weight, 0);

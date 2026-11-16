@@ -1,4 +1,7 @@
-import type { AgentRegistry } from "@shortlist/agents-shared";
+import type {
+  AgentRegistry,
+  AnyAgentDefinition,
+} from "@shortlist/agents-shared";
 import type { AgentKey, EventType, WorkspaceConfig } from "@shortlist/schemas";
 
 // An agent that would also listen to `event` sits it out while `unless` is
@@ -20,18 +23,16 @@ export function agentsFor(
   event: EventType,
   config: WorkspaceConfig,
   registry: AgentRegistry,
-): AgentKey[] {
-  return registry
-    .filter(
-      (agent) =>
-        agent.listensTo.includes(event) &&
-        config.agents[agent.key].enabled &&
-        !waits.some(
-          (wait) =>
-            wait.agent === agent.key &&
-            wait.event === event &&
-            config.agents[wait.unless].enabled,
-        ),
-    )
-    .map((agent) => agent.key);
+): AnyAgentDefinition[] {
+  return registry.filter(
+    (agent) =>
+      agent.listensTo.includes(event) &&
+      config.agents[agent.key].enabled &&
+      !waits.some(
+        (wait) =>
+          wait.agent === agent.key &&
+          wait.event === event &&
+          config.agents[wait.unless].enabled,
+      ),
+  );
 }

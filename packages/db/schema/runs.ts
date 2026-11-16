@@ -138,6 +138,12 @@ export const runStep = pgTable(
     step: text("step").notNull(),
     output: jsonb("output"),
     status: runStatus("status").notNull(),
+    // Model usage of this step's attempt, FAILED ones included, so spend on
+    // an attempt that hit a provider error isn't lost. The run's totals are
+    // their sum (finishRun).
+    tokensIn: integer("tokens_in").notNull(),
+    tokensOut: integer("tokens_out").notNull(),
+    costMicros: bigint("cost_micros", { mode: "number" }).notNull(),
     createdAt: createdAt(),
   },
   (t) => [

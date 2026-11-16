@@ -10,6 +10,7 @@ import {
   withTransaction,
 } from "../index";
 import { createTestDeal, createTestWorkspace, saveTestConfig } from "./helpers";
+const noUsage = { tokensIn: 0, tokensOut: 0, costMicros: 0 };
 
 async function twoWorkspaces() {
   const a = await createTestWorkspace("alpha");
@@ -68,6 +69,7 @@ describe("tenancy", () => {
       step: "parse",
       status: "SUCCEEDED",
       output: {},
+      usage: noUsage,
     });
 
     await expect(
@@ -78,7 +80,12 @@ describe("tenancy", () => {
       }),
     ).rejects.toThrow(`Run ${runA.id} not found in workspace ${b}`);
     await expect(
-      insertStep(b, runA.id, { step: "x", status: "FAILED", output: null }),
+      insertStep(b, runA.id, {
+        step: "x",
+        status: "FAILED",
+        output: null,
+        usage: noUsage,
+      }),
     ).rejects.toThrow(`Run ${runA.id} not found in workspace ${b}`);
     expect(await listSteps(b, runA.id)).toEqual([]);
     expect(await listSteps(a, runA.id)).toHaveLength(1);

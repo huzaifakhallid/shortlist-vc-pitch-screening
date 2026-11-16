@@ -515,6 +515,7 @@ type AgentDefinition<In, Out> = {
   listensTo: EventType[];
   promptVersion: string | null;        // recorded on the run; null without a model call
   model: string | null;
+  timeoutSeconds: number;              // one attempt's limit: the job expires, ctx.signal aborts
   needs: (deal: DealSnapshot) => In;   // throws MissingInputError if absent
   run: (input: In, ctx: AgentContext) => Promise<Out>;
   outputSchema: z.ZodType<Out>;
@@ -608,7 +609,7 @@ erDiagram
 | `document` | deal_id, kind (`deck`/`financials`/`cap_table`/`other`), object_key, uploaded_by |
 | `event` | workspace_id, deal_id (nullable: §8.2), type, payload, created_at, processed_at, dispatch_attempts, dispatch_error |
 | `agent_run` | workspace_id, deal_id (nullable: an Intake run starts before its deal exists), agent, trigger_event_id, config_version_id, prompt_version, model, input_hash, status, output (jsonb), tokens_in, tokens_out, cost_micros, latency_ms, error; unique (agent, trigger_event_id) |
-| `run_step` | run_id, step, output (jsonb), status |
+| `run_step` | run_id, step, output (jsonb), status, tokens_in, tokens_out, cost_micros (each step attempt's model usage, failed ones included; the run's totals are their sum) |
 | `outbound_message` | run_id, deal_id, kind, draft, final_text, status, decided_by, sent_at |
 | `note` | deal_id, user_id, body, created_at |
 | `score_override` | deal_id, criterion_key, ai_score, new_score, reason, user_id |
@@ -703,7 +704,7 @@ Saving creates a new version. Every agent run records the version it used, so "w
 - Untrusted content is wrapped in labelled delimiters (`<deck_facts>`, `<founder_email>`, `<web_result>`).
 - Every output is requested with a JSON schema generated from its Zod schema, and validated by that Zod schema when it returns; free text exists only inside schema fields.
 - Slides are sent as inline PNG image parts.
-- Prompts are versioned files; the version is stored on every run. Temperature 0 for extraction and scoring.
+- Prompts are versioned files; the version is stored on every run. Temperature stays at the Gemini 3 default (1.0): Google's Gemini 3 guide warns that lowering it can cause looping and degraded reasoning. Determinism comes from the JSON-schema response, Zod validation and the rule-based checks (citations, scoring math), and score stability is measured (§20).
 
 ### 14.3 Bias controls
 
@@ -721,10 +722,11 @@ Saving creates a new version. Every agent run records the version it used, so "w
 
 - **One provider, one file.** `packages/agents/shared/llm.ts` is the only file that imports the Google Gen AI SDK. Everything else calls `ctx.llm.structured(...)`. There is no multi-provider abstraction and no fallback provider; changing provider means changing that file.
 - **Zod is the source of truth.** `llm.ts` converts each Zod schema to the JSON Schema format Gemini accepts and validates every response with the same Zod schema.
-- **Models.** One Flash-class model reads pages and one scores and writes memos. IDs and a per-model price table live in `packages/agents/shared/models.ts`, not in workspace settings, because they aren't a fund's choice. Every run records its model. IDs are chosen from Google's model docs in milestone 2.
+- **Models.** One Flash-class model reads pages and one scores and writes memos. IDs and a per-model price table live in `packages/agents/shared/models.ts`, not in workspace settings, because they aren't a fund's choice. Every run records its model. Page reading uses `gemini-3.5-flash-lite`; facts, scoring and memos use `gemini-3.8-flash` (both stable in Google's model list, November 2026).
 - **Rate limit.** Free-tier limits are low, so `llm.ts` holds one rate limiter set by env `LLM_RPM`. A 15-page deck queues its calls instead of hitting 429s. Any 429 or 5xx that still occurs goes through pg-boss retry with backoff (§11.2).
 - **Free-tier data.** Google may use free-tier inputs to improve its products, so only synthetic data ever goes through a free-tier key (§15.4). Client deployments use a paid key.
 - **Search grounding** isn't on the free tier. Live Research runs need billing enabled on the key (§7.3).
+- **Grounding with a JSON-schema response:** Gemini 3 models can combine Google Search grounding and structured output in one call, but Google marks this as Preview, and developers report empty grounding metadata and truncated JSON with it, so Research makes two calls: a grounded search call, then a structured extraction call over its result.
 - **Speed on the free tier.** Calls are spaced by `LLM_RPM`, so a deck can take longer than the G1 target (§5.1).
 
 ---

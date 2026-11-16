@@ -27,6 +27,7 @@ export type AgentDefinition<In, Out> = {
   listensTo: EventType[];
   promptVersion: string | null;                 // recorded on the run; null without a model call
   model: string | null;
+  timeoutSeconds: number;                       // one attempt's limit; pg-boss expires the job and aborts ctx.signal
   needs(deal: DealSnapshot): In;                // throw MissingInputError("field") if absent
   run(input: In, ctx: AgentContext): Promise<Out>;
   outputSchema: z.ZodType<Out>;
@@ -37,13 +38,14 @@ export type AgentDefinition<In, Out> = {
 
 The types live in `packages/agents/shared/runtime.ts` (`sideEffect` arrives with Comms). Register the agent in `apps/worker/src/registry.ts`; the coordinator queues runs only for registered agents.
 
-`AgentContext` provides: `workspaceId`, `config` (the version the run was queued with), `runStep(name, schema, fn)` (persists step output and resumes from the first unfinished step), `llm` (model client), `storage` (with file storage), `log`. Agents get nothing else.
+`AgentContext` provides: `workspaceId`, `config` (the version the run was queued with), `runStep(name, schema, fn)` (persists step output and resumes from the first unfinished step), `llm` (model client), `signal` (aborted when the attempt expires), `storage` (with file storage), `log`. Agents get nothing else.
 
 ## Steps
 
 - `ctx.runStep("render", schema, () => ...)` persists each step's output to `run_step`. A retried run skips finished steps and returns their saved output, parsed with `schema`. Step names are unique within a run.
 - Throw `ProviderError` (from `@shortlist/agents-shared`) only for provider rate limits, 5xx and timeouts: the job is retried and the run resumes. Any other error fails the run at once.
 - A step is either deterministic code or one model call. Never both in one function.
+- Errors the agent throws and `ctx.log` messages name paths and ids (step, field path, page number), never content: no deck text, snippets or email fields.
 - Provider errors (429, 5xx, timeout) are retried by the job runner. Don't add your own retry loops except the single corrective retry for invalid model output (`llm-call` skill).
 
 ## Events

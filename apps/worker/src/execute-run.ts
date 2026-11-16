@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  describeIssues,
   ProviderError,
   sanitiseError,
   type AgentContext,
@@ -7,6 +8,7 @@ import {
   type AnyAgentDefinition,
   type DealSnapshot,
   type LlmClient,
+  type LlmUsage,
 } from "@shortlist/agents-shared";
 import { agentRunJobSchema, type AgentRunJob } from "@shortlist/coordinator";
 import {
@@ -26,19 +28,26 @@ import { z } from "zod";
 
 export type RunDeps = {
   registry: AgentRegistry;
-  // A fresh client per attempt; its usage() goes on the run record.
-  llmForRun: () => LlmClient;
+  // A fresh client per attempt, bound to the attempt's abort signal.
+  llmForRun: (signal: AbortSignal) => LlmClient;
   log: (message: string) => void;
 };
 
 // The job's attempt as pg-boss reports it: retryCount is 0 on the first.
-export type Attempt = { retryCount: number; retryLimit: number };
+// The signal is aborted when the job expires or the worker stops.
+export type Attempt = {
+  retryCount: number;
+  retryLimit: number;
+  signal: AbortSignal;
+};
 
 // Executes one agent run (§11.2). A ProviderError with retries left is
 // rethrown so pg-boss retries the job; the run stays RUNNING and the retry
-// resumes at its first unfinished step. Any other error, or the last
-// attempt's, finishes the run FAILED (from QUEUED if it never started) with
-// the sanitised error. If recording that fails too, the job fails.
+// resumes at its first unfinished step. So is any error once the attempt is
+// aborted: pg-boss has already failed the job, and retries it or hands it to
+// the dead-letter handler. Any other error, or the last attempt's, finishes
+// the run FAILED (from QUEUED if it never started) with the sanitised error.
+// If recording that fails too, the job fails.
 export async function executeRun(
   job: AgentRunJob,
   attempt: Attempt,
@@ -53,14 +62,9 @@ export async function executeRun(
   }
 
   // Latency counts from the run's start; before that, from this attempt's.
+  // Tokens and cost are the totals of the run's steps (finishRun).
   let startedAt = Date.now();
-  let llm: LlmClient | null = null;
-  const usage = () => ({
-    ...(llm === null
-      ? { tokensIn: 0, tokensOut: 0, costMicros: 0 }
-      : llm.usage()),
-    latencyMs: Date.now() - startedAt,
-  });
+  const latencyMs = () => Date.now() - startedAt;
 
   try {
     const agent = deps.registry.find((a) => a.key === run.agent);
@@ -84,12 +88,18 @@ export async function executeRun(
       throw new Error(`Run ${runId} is RUNNING without a start time`);
     }
     startedAt = started.startedAt.getTime();
-    llm = deps.llmForRun();
+    const steps = await stepRunner(
+      workspaceId,
+      runId,
+      deps.llmForRun(attempt.signal),
+      attempt.signal,
+    );
     const ctx: AgentContext = {
       workspaceId,
       config,
-      runStep: await stepRunner(workspaceId, runId),
-      llm,
+      runStep: steps.runStep,
+      llm: steps.llm,
+      signal: attempt.signal,
       log: (message) => {
         deps.log(`[${agent.key} ${runId}] ${message}`);
       },
@@ -99,12 +109,13 @@ export async function executeRun(
       agent,
       await agent.run(agent.needs(snapshot), ctx),
     );
+    attempt.signal.throwIfAborted();
     const events = agent.emits(output);
     await withTransaction(async (tx) => {
       await finishRun(tx, workspaceId, runId, {
         status: "SUCCEEDED",
         output,
-        ...usage(),
+        latencyMs: latencyMs(),
       });
       for (const event of events) {
         // The deal comes from the run (§11.1).
@@ -112,6 +123,9 @@ export async function executeRun(
       }
     });
   } catch (error) {
+    if (attempt.signal.aborted) {
+      throw error;
+    }
     if (
       error instanceof ProviderError &&
       attempt.retryCount < attempt.retryLimit
@@ -124,7 +138,7 @@ export async function executeRun(
         finishRun(tx, workspaceId, runId, {
           status: "FAILED",
           error: message,
-          ...usage(),
+          latencyMs: latencyMs(),
         }),
       );
     } catch (recordError) {
@@ -146,30 +160,41 @@ function parseOutput(agent: AnyAgentDefinition, output: unknown): unknown {
   const parsed = agent.outputSchema.safeParse(output);
   if (!parsed.success) {
     throw new Error(
-      `${agent.key} output is invalid: ${z.prettifyError(parsed.error)}`,
+      `${agent.key} output is invalid:\n${describeIssues(agent.outputSchema, parsed.error)}`,
     );
   }
   return parsed.data;
 }
 
-// ctx.runStep for one attempt. Steps finished by an earlier attempt return
-// their saved output; the others run and are saved, SUCCEEDED or FAILED.
+// ctx.runStep and ctx.llm for one attempt. Steps finished by an earlier
+// attempt return their saved output; the others run and are saved,
+// SUCCEEDED or FAILED, with the model usage they spent. Steps run one at a
+// time and the model is called only inside one, so a step's usage is the
+// attempt client's usage across it.
 async function stepRunner(
   workspaceId: string,
   runId: string,
-): Promise<AgentContext["runStep"]> {
+  client: LlmClient,
+  signal: AbortSignal,
+): Promise<Pick<AgentContext, "runStep" | "llm">> {
   // In insertion order, so the latest row for a step wins.
   const saved = new Map<string, RunStep>();
   for (const step of await listSteps(workspaceId, runId)) {
     saved.set(step.step, step);
   }
   const seen = new Set<string>();
+  let running: string | null = null;
 
-  return async <T>(
+  const runStep = async <T>(
     name: string,
     schema: z.ZodType<T>,
     fn: () => Promise<T>,
   ): Promise<T> => {
+    if (running !== null) {
+      throw new Error(
+        `Step "${name}" started while step "${running}" is running in run ${runId}; steps run one at a time`,
+      );
+    }
     if (seen.has(name)) {
       throw new Error(`Step "${name}" ran twice in run ${runId}`);
     }
@@ -180,45 +205,116 @@ async function stepRunner(
       const parsed = schema.safeParse(previous.output);
       if (!parsed.success) {
         throw new Error(
-          `Saved output of step "${name}" in run ${runId} is invalid: ${z.prettifyError(parsed.error)}`,
+          `Saved output of step "${name}" in run ${runId} is invalid:\n${describeIssues(schema, parsed.error)}`,
         );
       }
       return parsed.data;
     }
 
+    signal.throwIfAborted();
+    const before = client.usage();
+    const spent = () => usageSince(before, client.usage());
+    running = name;
     let output: T;
     try {
       output = await fn();
     } catch (error) {
-      await insertStep(workspaceId, runId, {
-        step: name,
-        status: "FAILED",
-        output: { error: sanitiseError(error) },
-      });
+      running = null;
+      const message = sanitiseError(error);
+      try {
+        await insertStep(workspaceId, runId, {
+          step: name,
+          status: "FAILED",
+          output: { error: message },
+          usage: spent(),
+        });
+      } catch (recordError) {
+        throw new Error(
+          `Step "${name}" of run ${runId} failed (${message}) and the failure couldn't be recorded`,
+          { cause: recordError },
+        );
+      }
       throw error;
     }
+    running = null;
     await insertStep(workspaceId, runId, {
       step: name,
       status: "SUCCEEDED",
       output,
+      usage: spent(),
     });
     return output;
   };
+
+  const llm: LlmClient = {
+    structured: (request) =>
+      running === null
+        ? Promise.reject(
+            new Error(
+              `Model call for ${request.promptVersion} outside a step in run ${runId}; call ctx.llm inside ctx.runStep`,
+            ),
+          )
+        : client.structured(request),
+    usage: () => client.usage(),
+  };
+
+  return { runStep, llm };
+}
+
+function usageSince(before: LlmUsage, after: LlmUsage): LlmUsage {
+  return {
+    tokensIn: after.tokensIn - before.tokensIn,
+    tokensOut: after.tokensOut - before.tokensOut,
+    costMicros: after.costMicros - before.costMicros,
+  };
+}
+
+function parseJob(job: JobWithMetadata<unknown>): AgentRunJob {
+  const data = agentRunJobSchema.safeParse(job.data);
+  if (!data.success) {
+    throw new Error(
+      `Job ${job.id} has invalid data: ${z.prettifyError(data.error)}`,
+    );
+  }
+  return data.data;
 }
 
 // The pg-boss handler for AGENT_RUN_QUEUE (batch size 1). Throwing fails the
-// job, which pg-boss retries up to the queue's retryLimit.
+// job, which pg-boss retries up to the queue's retryLimit, then moves to
+// AGENT_RUN_DEAD_LETTER_QUEUE.
 export async function handleAgentRunJobs(
   jobs: readonly JobWithMetadata<unknown>[],
   deps: RunDeps,
 ): Promise<void> {
   for (const job of jobs) {
-    const data = agentRunJobSchema.safeParse(job.data);
-    if (!data.success) {
-      throw new Error(
-        `Job ${job.id} has invalid data: ${z.prettifyError(data.error)}`,
-      );
+    await executeRun(parseJob(job), job, deps);
+  }
+}
+
+// The pg-boss handler for AGENT_RUN_DEAD_LETTER_QUEUE: the run's job failed
+// its last attempt, so no attempt will finish the run. A run still QUEUED or
+// RUNNING is finished FAILED, so none is left stuck.
+export async function handleDeadLetterJobs(
+  jobs: readonly JobWithMetadata<unknown>[],
+  deps: Pick<RunDeps, "log">,
+): Promise<void> {
+  for (const job of jobs) {
+    const { workspaceId, runId } = parseJob(job);
+    const run = await getRun(workspaceId, runId);
+    if (run.status === "SUCCEEDED" || run.status === "FAILED") {
+      deps.log(`Run ${runId} is already ${run.status}; nothing to do`);
+      continue;
     }
-    await executeRun(data.data, job, deps);
+    const error = `Run ${runId} stopped: its job failed its last attempt (it timed out, or the worker stopped or couldn't record the run)`;
+    await withTransaction((tx) =>
+      finishRun(tx, workspaceId, runId, {
+        status: "FAILED",
+        error,
+        // A run that never started has no latency to record.
+        latencyMs:
+          run.startedAt === null ? null : Date.now() - run.startedAt.getTime(),
+      }),
+    );
+    deps.log(`Run ${runId} (${run.agent}) failed: ${error}`);
   }
 }

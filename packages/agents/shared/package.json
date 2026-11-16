@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./llm": "./llm.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^3.3.0",
     "@shortlist/db": "workspace:*",
     "@shortlist/schemas": "workspace:*",
     "zod": "^4.6.7"

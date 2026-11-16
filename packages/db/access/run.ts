@@ -1,7 +1,8 @@
 import type { AgentKey, RunStatus } from "@shortlist/schemas";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db, single, type Tx } from "../client";
-import { agentRun, event } from "../schema";
+import { agentRun, event, runStep } from "../schema";
 
 export type AgentRun = typeof agentRun.$inferSelect;
 
@@ -145,20 +146,22 @@ export async function startRun(
   return run;
 }
 
-type RunUsage = {
-  tokensIn: number;
-  tokensOut: number;
-  costMicros: number;
-  latencyMs: number;
-};
-
 export type RunResult =
-  | ({ status: "SUCCEEDED"; output: unknown } & RunUsage)
-  | ({ status: "FAILED"; error: string } & RunUsage);
+  | { status: "SUCCEEDED"; output: unknown; latencyMs: number }
+  // Null latency: the run never started and no attempt timed it (the
+  // dead-letter handler).
+  | { status: "FAILED"; error: string; latencyMs: number | null };
+
+// The sum of a run_step usage column over the run being updated: every step
+// attempt's spend, FAILED ones included. A run without steps spent 0.
+function stepTotal(column: AnyPgColumn) {
+  return sql<number>`(select coalesce(sum(${column}), 0) from ${runStep} where ${runStep.runId} = ${agentRun.id} and ${runStep.workspaceId} = ${agentRun.workspaceId})`;
+}
 
 // RUNNING -> SUCCEEDED | FAILED, once. QUEUED -> FAILED too, so a run that
-// fails before it starts still records why. Takes the caller's transaction:
-// a run's output events are written in the same commit (§8.1).
+// fails before it starts still records why. Tokens and cost are the totals of
+// the run's steps. Takes the caller's transaction: a run's output events are
+// written in the same commit (§8.1).
 export async function finishRun(
   tx: Tx,
   workspaceId: string,
@@ -176,9 +179,9 @@ export async function finishRun(
     .set({
       ...outcome,
       status: result.status,
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      costMicros: result.costMicros,
+      tokensIn: stepTotal(runStep.tokensIn),
+      tokensOut: stepTotal(runStep.tokensOut),
+      costMicros: stepTotal(runStep.costMicros),
       latencyMs: result.latencyMs,
       finishedAt: sql`now()`,
     })

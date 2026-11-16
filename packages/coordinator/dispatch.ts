@@ -80,7 +80,7 @@ async function dispatchEvent(
   let created = 0;
   for (const agent of agentsFor(event.type, config.config, registry)) {
     const result = await createRun(sp, event.workspaceId, {
-      agent,
+      agent: agent.key,
       triggerEventId: event.id,
       configVersionId: config.id,
     });
@@ -92,6 +92,7 @@ async function dispatchEvent(
     const job: AgentRunJob = { workspaceId: run.workspaceId, runId: run.id };
     const jobId = await boss.send(AGENT_RUN_QUEUE, job, {
       id: run.id,
+      expireInSeconds: agent.timeoutSeconds,
       db: jobQueueDb(sp),
     });
     if (jobId === null) {

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { validConfig } from "../../schemas/tests/config.fixture";
-import { agentsFor } from "../routing";
+import { agentsFor as agentsForDefinitions } from "../routing";
 import { listener } from "./agents";
+
+// The keys of the agents that take the event.
+function agentsFor(...args: Parameters<typeof agentsForDefinitions>) {
+  return agentsForDefinitions(...args).map((agent) => agent.key);
+}
 
 const registry = [
   listener("screening", ["deal.received"]),

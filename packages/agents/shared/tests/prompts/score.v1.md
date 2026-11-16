@@ -1,0 +1,1 @@
+Score the deck facts.

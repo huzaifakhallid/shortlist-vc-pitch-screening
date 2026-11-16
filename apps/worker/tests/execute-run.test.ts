@@ -1,9 +1,14 @@
 import {
   ProviderError,
+  SCORING_MODEL,
+  systemPrompt,
+  type AgentContext,
   type AgentDefinition,
   type LlmClient,
+  type StructuredRequest,
 } from "@shortlist/agents-shared";
 import {
+  AGENT_RUN_DEAD_LETTER_QUEUE,
   AGENT_RUN_QUEUE,
   dispatchEvents,
   type AgentRunJob,
@@ -38,6 +43,7 @@ import {
 import {
   executeRun,
   handleAgentRunJobs,
+  handleDeadLetterJobs,
   type RunDeps,
 } from "../src/execute-run";
 
@@ -47,6 +53,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await boss.deleteAllJobs(AGENT_RUN_QUEUE);
+  await boss.deleteAllJobs(AGENT_RUN_DEAD_LETTER_QUEUE);
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -61,7 +68,7 @@ type TestAgent = AgentDefinition<{ eventId: string }, { score: number }>;
 // seven); the worker's own registry stays empty. Two steps, then one event.
 function testAgent(options: {
   listensTo: EventType;
-  score: () => Promise<number>;
+  score: (ctx: AgentContext) => Promise<number>;
   emits: ShortlistEvent;
 }) {
   const calls = { read: 0, score: 0 };
@@ -70,6 +77,7 @@ function testAgent(options: {
     listensTo: [options.listensTo],
     promptVersion: "test.v1",
     model: "test-model",
+    timeoutSeconds: 60,
     needs: (deal) => ({ eventId: deal.trigger.id }),
     run: async (_input, ctx) => {
       const read = await ctx.runStep(
@@ -82,7 +90,7 @@ function testAgent(options: {
       );
       const score = await ctx.runStep("score", z.number(), () => {
         calls.score += 1;
-        return options.score();
+        return options.score(ctx);
       });
       return { score: score + read.pages };
     },
@@ -92,24 +100,54 @@ function testAgent(options: {
   return { agent, calls };
 }
 
-const llm: LlmClient = {
-  structured: () =>
-    Promise.reject(new Error("The test agent makes no model call")),
-  usage: () => ({ tokensIn: 0, tokensOut: 0, costMicros: 0 }),
-};
+// A model client per attempt whose every call spends 100 tokens in, 10 out
+// and 50 micros, then returns 4. `signals` collects each attempt's signal.
+function stubLlm() {
+  const signals: AbortSignal[] = [];
+  const llmForRun = (signal: AbortSignal): LlmClient => {
+    signals.push(signal);
+    const usage = { tokensIn: 0, tokensOut: 0, costMicros: 0 };
+    return {
+      structured: <T>(request: StructuredRequest<T>) => {
+        usage.tokensIn += 100;
+        usage.tokensOut += 10;
+        usage.costMicros += 50;
+        return Promise.resolve(request.schema.parse(4));
+      },
+      usage: () => ({ ...usage }),
+    };
+  };
+  return { llmForRun, signals };
+}
 
 function depsFor(agent: TestAgent) {
   const logs: string[] = [];
+  const llm = stubLlm();
   const deps: RunDeps = {
     registry: [agent],
-    llmForRun: () => llm,
+    llmForRun: llm.llmForRun,
     log: (message) => logs.push(message),
   };
-  return { deps, logs };
+  return { deps, logs, signals: llm.signals };
+}
+
+// One model call through ctx.llm.
+function callModel(ctx: AgentContext): Promise<number> {
+  return ctx.llm.structured({
+    model: SCORING_MODEL,
+    promptVersion: "score.v1",
+    system: systemPrompt(new URL("./prompts/", import.meta.url), "score.v1.md"),
+    input: [],
+    schema: z.number(),
+  });
+}
+
+function attempt(retryCount: number, signal = new AbortController().signal) {
+  return { retryCount, retryLimit: 3, signal };
 }
 
 const screened: ShortlistEvent = { type: "deal.screened", payload: {} };
-const firstAttempt = { retryCount: 0, retryLimit: 3 };
+const firstAttempt = attempt(0);
 
 // Inserts `trigger` in a new workspace and dispatches it to `deps`' agent.
 async function dispatchedRun(
@@ -165,7 +203,12 @@ describe("agent runs end to end", () => {
 
     const jobs = await boss.fetch(AGENT_RUN_QUEUE, { includeMetadata: true });
     expect(jobs.map((job) => job.id)).toEqual([run.id]);
-    await handleAgentRunJobs(jobs, deps);
+    // fetch() leaves out the signal that work() gives each job.
+    const signal = new AbortController().signal;
+    await handleAgentRunJobs(
+      jobs.map((job) => ({ ...job, signal })),
+      deps,
+    );
 
     const finished = await reload(run);
     expect(finished).toMatchObject({
@@ -237,7 +280,7 @@ describe("agent runs end to end", () => {
     );
     expect(await reload(run)).toMatchObject({ status: "RUNNING", error: null });
 
-    await executeRun(job, { retryCount: 1, retryLimit: 3 }, deps);
+    await executeRun(job, attempt(1), deps);
 
     expect(await reload(run)).toMatchObject({
       status: "SUCCEEDED",
@@ -261,7 +304,7 @@ describe("agent runs end to end", () => {
     const { deps } = depsFor(agent);
     const { run, job } = await dispatchedRun(deps);
 
-    await executeRun(job, { retryCount: 3, retryLimit: 3 }, deps);
+    await executeRun(job, attempt(3), deps);
 
     expect(await reload(run)).toMatchObject({
       status: "FAILED",
@@ -326,9 +369,201 @@ describe("agent runs end to end", () => {
     const { run, job } = await dispatchedRun(deps);
     await executeRun(job, firstAttempt, deps);
 
-    await executeRun(job, { retryCount: 1, retryLimit: 3 }, deps);
+    await executeRun(job, attempt(1), deps);
 
     expect(calls).toEqual({ read: 1, score: 1 });
     expect(logs).toContain(`Run ${run.id} is already SUCCEEDED; nothing to do`);
+  });
+});
+
+describe("model usage", () => {
+  it("records each step attempt's usage and totals it on the run", async () => {
+    let attempts = 0;
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: async (ctx) => {
+        attempts += 1;
+        const score = await callModel(ctx);
+        if (attempts === 1) {
+          // Spent on the call above, then the second call hit a 429.
+          throw new ProviderError("429 from the model");
+        }
+        return score + (await callModel(ctx));
+      },
+      emits: screened,
+    });
+    const { deps } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps);
+
+    await expect(executeRun(job, firstAttempt, deps)).rejects.toThrow(
+      ProviderError,
+    );
+    await executeRun(job, attempt(1), deps);
+
+    const steps = await listSteps(run.workspaceId, run.id);
+    expect(
+      steps.map((s) => [s.step, s.status, s.tokensIn, s.costMicros]),
+    ).toEqual([
+      ["read", "SUCCEEDED", 0, 0],
+      ["score", "FAILED", 100, 50],
+      ["score", "SUCCEEDED", 200, 100],
+    ]);
+    expect(await reload(run)).toMatchObject({
+      status: "SUCCEEDED",
+      output: { score: 11 },
+      tokensIn: 300,
+      tokensOut: 30,
+      costMicros: 150,
+    });
+  });
+
+  it("fails the run on a model call outside a step", async () => {
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: () => Promise.resolve(7),
+      emits: screened,
+    });
+    const outside: TestAgent = {
+      ...agent,
+      run: async (_input, ctx) => ({ score: await callModel(ctx) }),
+    };
+    const { deps } = depsFor(outside);
+    const { run, job } = await dispatchedRun(deps);
+
+    await executeRun(job, firstAttempt, deps);
+
+    expect(await reload(run)).toMatchObject({
+      status: "FAILED",
+      error: `Model call for score.v1 outside a step in run ${run.id}; call ctx.llm inside ctx.runStep`,
+    });
+  });
+});
+
+describe("expired attempts", () => {
+  it("passes the attempt's signal to the model client and the agent", async () => {
+    const seen: AbortSignal[] = [];
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: (ctx) => {
+        seen.push(ctx.signal);
+        return Promise.resolve(7);
+      },
+      emits: screened,
+    });
+    const { deps, signals } = depsFor(agent);
+    const { job } = await dispatchedRun(deps);
+    const controller = new AbortController();
+
+    await executeRun(job, attempt(0, controller.signal), deps);
+
+    expect(signals).toEqual([controller.signal]);
+    expect(seen).toEqual([controller.signal]);
+  });
+
+  it("leaves the run to pg-boss once the attempt is aborted", async () => {
+    const controller = new AbortController();
+    const { agent, calls } = testAgent({
+      listensTo: "deal.received",
+      score: () => {
+        controller.abort(new Error("handler execution exceeded 60s"));
+        return Promise.reject(new Error("Model call stopped"));
+      },
+      emits: screened,
+    });
+    const { deps } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps);
+
+    // Not a provider error, but the attempt was aborted: rethrown, and the
+    // run isn't failed, so pg-boss's retry (or the dead-letter handler) can
+    // finish it.
+    await expect(
+      executeRun(job, attempt(3, controller.signal), deps),
+    ).rejects.toThrow("Model call stopped");
+    expect(await reload(run)).toMatchObject({ status: "RUNNING", error: null });
+    expect(await stepRows(run)).toEqual([
+      ["read", "SUCCEEDED", { pages: 3 }],
+      ["score", "FAILED", { error: "Model call stopped" }],
+    ]);
+    expect(calls).toEqual({ read: 1, score: 1 });
+  });
+
+  it("dead-letters an expired last attempt and fails its run", async () => {
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      // Hangs until the attempt is aborted, as an agent stuck in a model
+      // call would.
+      score: (ctx) =>
+        new Promise((_resolve, reject) => {
+          ctx.signal.addEventListener("abort", () => {
+            reject(new Error("Model call stopped"));
+          });
+        }),
+      emits: screened,
+    });
+    const { deps, logs } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps);
+    // The run's job, on its last attempt, expiring after 1 second.
+    await boss.deleteAllJobs(AGENT_RUN_QUEUE);
+    await boss.send(AGENT_RUN_QUEUE, job, {
+      id: run.id,
+      retryLimit: 0,
+      expireInSeconds: 1,
+    });
+
+    const options = {
+      includeMetadata: true,
+      pollingIntervalSeconds: 0.5,
+    } as const;
+    const runWorker = await boss.work(AGENT_RUN_QUEUE, options, (jobs) =>
+      handleAgentRunJobs(jobs, deps),
+    );
+    const deadLetterWorker = await boss.work(
+      AGENT_RUN_DEAD_LETTER_QUEUE,
+      options,
+      (jobs) => handleDeadLetterJobs(jobs, deps),
+    );
+    try {
+      await vi.waitFor(
+        async () => {
+          expect((await reload(run)).status).toBe("FAILED");
+        },
+        { timeout: 10_000, interval: 200 },
+      );
+    } finally {
+      await boss.offWork(AGENT_RUN_QUEUE, { id: runWorker });
+      await boss.offWork(AGENT_RUN_DEAD_LETTER_QUEUE, { id: deadLetterWorker });
+    }
+
+    const error = `Run ${run.id} stopped: its job failed its last attempt (it timed out, or the worker stopped or couldn't record the run)`;
+    const failed = await reload(run);
+    expect(failed).toMatchObject({ status: "FAILED", error });
+    expect(failed.latencyMs).toBeGreaterThanOrEqual(1000);
+    expect(await stepRows(run)).toEqual([
+      ["read", "SUCCEEDED", { pages: 3 }],
+      ["score", "FAILED", { error: "Model call stopped" }],
+    ]);
+    expect(logs).toContain(`Run ${run.id} (screening) failed: ${error}`);
+  });
+
+  it("fails a dead-lettered run that never started", async () => {
+    const { agent } = testAgent({
+      listensTo: "deal.received",
+      score: () => Promise.resolve(7),
+      emits: screened,
+    });
+    const { deps } = depsFor(agent);
+    const { run, job } = await dispatchedRun(deps);
+    await boss.send(AGENT_RUN_DEAD_LETTER_QUEUE, job);
+    const jobs = await boss.fetch(AGENT_RUN_DEAD_LETTER_QUEUE, {
+      includeMetadata: true,
+    });
+
+    await handleDeadLetterJobs(jobs, deps);
+
+    expect(await reload(run)).toMatchObject({
+      status: "FAILED",
+      startedAt: null,
+      latencyMs: null,
+    });
   });
 });

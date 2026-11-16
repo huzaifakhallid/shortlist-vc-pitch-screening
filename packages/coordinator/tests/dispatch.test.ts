@@ -21,7 +21,11 @@ import {
   type TestWorkspace,
 } from "../../db/tests/helpers";
 import { dispatchEvents } from "../dispatch";
-import { AGENT_RUN_QUEUE, createAgentRunQueue } from "../queue";
+import {
+  AGENT_RUN_DEAD_LETTER_QUEUE,
+  AGENT_RUN_QUEUE,
+  createAgentRunQueue,
+} from "../queue";
 import { listener } from "./agents";
 import { startTestBoss } from "./boss";
 
@@ -85,6 +89,11 @@ describe("dispatchEvents", () => {
       });
       const [job] = await boss.findJobs(AGENT_RUN_QUEUE, { id: run.id });
       expect(job?.data).toEqual({ workspaceId: t.workspace.id, runId: run.id });
+      // The agent's timeout, and the dead-letter queue for its last failure.
+      expect(job).toMatchObject({
+        expireInSeconds: 60,
+        deadLetter: AGENT_RUN_DEAD_LETTER_QUEUE,
+      });
     }
   });
 

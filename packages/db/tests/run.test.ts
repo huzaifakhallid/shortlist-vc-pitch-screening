@@ -32,12 +32,8 @@ async function queuedRun() {
   return { workspaceId: t.workspace.id, dealId, input, run };
 }
 
-const usage = {
-  tokensIn: 1200,
-  tokensOut: 300,
-  costMicros: 450,
-  latencyMs: 900,
-};
+const usage = { latencyMs: 900 };
+const noUsage = { tokensIn: 0, tokensOut: 0, costMicros: 0 };
 const started = { promptVersion: "v1", model: "gemini-test", inputHash: "abc" };
 
 describe("agent runs", () => {
@@ -76,6 +72,7 @@ describe("agent runs", () => {
       output: { score: 72 },
       error: null,
       ...usage,
+      ...noUsage,
     });
     expect(finished.finishedAt).toBeInstanceOf(Date);
 
@@ -132,7 +129,12 @@ describe("agent runs", () => {
 
   it("adds steps only while the run is running", async () => {
     const { workspaceId, run } = await queuedRun();
-    const step = { step: "render", status: "SUCCEEDED" as const, output: {} };
+    const step = {
+      step: "render",
+      status: "SUCCEEDED" as const,
+      output: {},
+      usage: noUsage,
+    };
     await expect(insertStep(workspaceId, run.id, step)).rejects.toThrow(
       `Cannot add a step to run ${run.id}: it is QUEUED`,
     );
@@ -157,11 +159,13 @@ describe("agent runs", () => {
       step: "render",
       status: "SUCCEEDED",
       output: { pages: 12 },
+      usage: noUsage,
     });
     await insertStep(workspaceId, run.id, {
       step: "facts",
       status: "FAILED",
       output: null,
+      usage: noUsage,
     });
 
     const steps = await listSteps(workspaceId, run.id);
@@ -169,5 +173,40 @@ describe("agent runs", () => {
       ["render", "SUCCEEDED", { pages: 12 }],
       ["facts", "FAILED", null],
     ]);
+  });
+
+  it("totals every step attempt's usage on the run, FAILED ones included", async () => {
+    const { workspaceId, run } = await queuedRun();
+    await startRun(workspaceId, run.id, started);
+    const attempts = [
+      { status: "SUCCEEDED" as const, tokensIn: 1200, costMicros: 450 },
+      { status: "FAILED" as const, tokensIn: 800, costMicros: 300 },
+      { status: "SUCCEEDED" as const, tokensIn: 810, costMicros: 305 },
+    ];
+    for (const [i, a] of attempts.entries()) {
+      await insertStep(workspaceId, run.id, {
+        step: i === 0 ? "read" : "score",
+        status: a.status,
+        output: null,
+        usage: {
+          tokensIn: a.tokensIn,
+          tokensOut: 100,
+          costMicros: a.costMicros,
+        },
+      });
+    }
+
+    const finished = await withTransaction((tx) =>
+      finishRun(tx, workspaceId, run.id, {
+        status: "SUCCEEDED",
+        output: {},
+        ...usage,
+      }),
+    );
+    expect(finished).toMatchObject({
+      tokensIn: 2810,
+      tokensOut: 300,
+      costMicros: 1055,
+    });
   });
 });

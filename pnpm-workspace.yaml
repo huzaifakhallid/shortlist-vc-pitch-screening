@@ -4,5 +4,6 @@ packages:
   - "packages/agents/*"
 allowBuilds:
   esbuild: false
+  protobufjs: false
   sharp: false
   unrs-resolver: false

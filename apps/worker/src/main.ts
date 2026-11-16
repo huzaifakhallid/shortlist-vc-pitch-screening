@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { geminiClients } from "@shortlist/agents-shared/llm";
 import {
+  AGENT_RUN_DEAD_LETTER_QUEUE,
   AGENT_RUN_QUEUE,
   createAgentRunQueue,
   dispatchEvents,
@@ -7,7 +9,11 @@ import {
 import { closeDb } from "@shortlist/db";
 import { parseEnv, workerEnvSchema } from "@shortlist/schemas";
 import { PgBoss } from "pg-boss";
-import { handleAgentRunJobs, type RunDeps } from "./execute-run";
+import {
+  handleAgentRunJobs,
+  handleDeadLetterJobs,
+  type RunDeps,
+} from "./execute-run";
 import { registry } from "./registry";
 
 // `pnpm worker`: the coordinator tick and the agent runner (§8.1, §11.2).
@@ -22,11 +28,7 @@ const TICK_MS = 2000;
 
 const deps: RunDeps = {
   registry,
-  llmForRun: () => {
-    throw new Error(
-      "No model client yet: packages/agents/shared/llm.ts arrives in milestone 2",
-    );
-  },
+  llmForRun: geminiClients({ apiKey: env.GEMINI_API_KEY, rpm: env.LLM_RPM }),
   log: (message) => {
     console.log(message);
   },
@@ -40,6 +42,11 @@ await boss.start();
 await createAgentRunQueue(boss);
 await boss.work(AGENT_RUN_QUEUE, { includeMetadata: true }, (jobs) =>
   handleAgentRunJobs(jobs, deps),
+);
+await boss.work(
+  AGENT_RUN_DEAD_LETTER_QUEUE,
+  { includeMetadata: true },
+  (jobs) => handleDeadLetterJobs(jobs, deps),
 );
 
 // Ticks never overlap: the next is scheduled when one ends.

@@ -18,6 +18,10 @@ export type WebEnv = z.infer<typeof webEnvSchema>;
 
 export const workerEnvSchema = z.object({
   DATABASE_URL: databaseUrl,
+  // A free-tier key only ever sees synthetic data (§14.4, §15.4).
+  GEMINI_API_KEY: z.string().min(1),
+  // Model requests per minute for this worker process (§14.4).
+  LLM_RPM: z.coerce.number().int().positive(),
 });
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 

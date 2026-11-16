@@ -12,6 +12,7 @@ export function listener(
     listensTo,
     promptVersion: null,
     model: null,
+    timeoutSeconds: 60,
     needs: () => null,
     run: () => Promise.resolve(null),
     outputSchema: z.null(),

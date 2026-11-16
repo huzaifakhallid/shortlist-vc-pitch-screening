@@ -42,9 +42,25 @@ describe("parseEnv", () => {
     ).toBe(true);
   });
 
-  it("needs only DATABASE_URL for the worker", () => {
-    expect(
+  it("needs the database, the Gemini key and LLM_RPM for the worker", () => {
+    const worker = {
+      DATABASE_URL: validWebEnv.DATABASE_URL,
+      GEMINI_API_KEY: "test-key",
+      LLM_RPM: "10",
+    };
+    expect(parseEnv(workerEnvSchema, worker)).toEqual({
+      ...worker,
+      LLM_RPM: 10,
+    });
+    expect(() =>
       parseEnv(workerEnvSchema, { DATABASE_URL: validWebEnv.DATABASE_URL }),
-    ).toEqual({ DATABASE_URL: validWebEnv.DATABASE_URL });
+    ).toThrow(
+      "Missing or invalid environment variables: GEMINI_API_KEY, LLM_RPM",
+    );
+    for (const rpm of ["0", "", "2.5", "ten"]) {
+      expect(() =>
+        parseEnv(workerEnvSchema, { ...worker, LLM_RPM: rpm }),
+      ).toThrow("Missing or invalid environment variables: LLM_RPM");
+    }
   });
 });

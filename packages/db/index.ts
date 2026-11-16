@@ -28,7 +28,12 @@ export {
   type FinishedStatus,
   type RunResult,
 } from "./access/run";
-export { insertStep, listSteps, type RunStep } from "./access/step";
+export {
+  insertStep,
+  listSteps,
+  type RunStep,
+  type StepUsage,
+} from "./access/step";
 export { createUser, getUserByEmail, type User } from "./access/user";
 export {
   createWorkspace,

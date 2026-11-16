@@ -15,22 +15,25 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Workspace switcher: a user with more than one membership currently fails with a specific error (`apps/web/lib/workspace-membership.ts`)
 - [ ] Known gap (library behaviour): Auth.js treats a database error while reading the session as signed out. Its `logger.error` records the error on the server; Sentry later
 - [x] `packages/coordinator` + `packages/agents/shared` + `apps/worker`: events → enabled agents → pg-boss jobs; `agent_run` + `run_step` persistence; `LlmClient` type only (Gemini implementation is milestone 2). pg-boss 12: runs and their jobs are created in the event-claim transaction (`jobQueueDb` in `@shortlist/db/coordinator`); provider errors retry and resume at the failed step, other errors (including ones before the run starts) fail the run. Each event dispatches in its own savepoint; a failing one records `dispatch_error` and is dropped after 3 attempts (migration `0002_dispatch_failures`). Stored error text goes through `sanitiseError` (DB errors become a logged reference). `pnpm worker` runs with an empty registry (`apps/worker/src/registry.ts`) until milestone 2
-- [ ] Worker gap: a process that dies mid-job (the job expires) leaves the run `RUNNING`. Add a dead-letter handler that fails the run before milestone 2 agents ship
+- [x] Worker gap: a job that fails its last attempt (expired, or its handler threw) moves to `agent-run-dead-letter`, whose handler finishes a still `QUEUED`/`RUNNING` run `FAILED` (milestone 2)
 - [ ] Coordinator: Diligence listens to `deal.stage_changed` only when `to` is `DILIGENCE` (§8.2); add that payload condition to `packages/coordinator/routing.ts` with the Diligence agent (milestone 5)
 - [x] Seed script (`pnpm db:seed`): demo workspace "Kestrel Ventures" (fictional) with two partners, an analyst and an admin, config v1, Slack and HubSpot off. Leaves an existing `kestrel` workspace unchanged (no FK cascades, so the milestone 6 nightly reset needs its own delete path)
 - [x] CI: GitHub Actions with a Postgres service container (typecheck, lint, format, tests, migrations apply + match schema, web build; eval smoke and deploy steps arrive in milestone 6)
 
 ## Milestone 2 — Intake + Screening
-- [ ] `packages/agents/shared/llm.ts`: Gemini SDK, Zod → JSON Schema, inline PNG parts, `LLM_RPM` rate limiter; `models.ts` with model IDs + price table (§14.4)
+- [x] `packages/agents/shared/llm.ts` (`@shortlist/agents-shared/llm`, imported only by the worker entry): `@google/genai` 3.3, `z.toJSONSchema` → `responseJsonSchema`, one corrective retry → `InvalidModelOutputError`, inline PNG parts, in-process `LLM_RPM` limiter, no SDK retries; `models.ts`: `gemini-3.5-flash-lite` (page reading) and `gemini-3.8-flash` (scoring, memo) with paid list prices (3.8 Flash at its 2027-01-01 price); `prompt.ts` branded prompt parts, boundary-nonce delimiters + system notice. `GEMINI_API_KEY` and `LLM_RPM` are required worker env
 - [ ] Public pitch form + presigned upload
 - [ ] Postmark inbound webhook (signature-verified) → Intake agent
 - [ ] Dedupe rules
 - [ ] Screening: render, page reading, hidden-text check, facts + profile, mandate, rubric scoring, citation validator, score
-- [ ] `llm.ts` builds each `ProviderError` message itself (HTTP status + reason); it never copies the SDK's message or `cause`, since those can echo prompt content into `agent_run.error`
+- [x] `llm.ts` builds each `ProviderError` message itself (HTTP status + reason); it never copies the SDK's message or `cause`, since those can echo prompt content into `agent_run.error`
 - [ ] Intake's narrow path (§11.1): create the deal in the same transaction as `finishRun` and take `deal.received`'s deal id from that insert, never from model output
-- [ ] Before real model calls: a job expiry sized per agent, and the pg-boss job's abort signal passed into `AgentContext`, so an expired attempt stops instead of running alongside its retry
-- [ ] Per-attempt usage: `LlmClient.usage()` covers the current attempt only, so tokens spent on an attempt that hit a provider error are missing from the run. Record usage per step (or per attempt) with `llm.ts`
+- [x] Before real model calls: `AgentDefinition.timeoutSeconds` is each job's `expireInSeconds`; the job's abort signal is `ctx.signal` and goes to every model call; an aborted attempt is rethrown without failing the run
+- [x] Per-attempt usage: each `run_step` row records its attempt's tokens and cost (migration `0003_step_usage`), failed attempts included; `finishRun` totals them. Steps run one at a time and model calls are allowed only inside a step
 - [ ] §11.3 tool allowlist enforcement and `storage` in `AgentContext`: add with the first agent that needs a tool or file storage
+- [ ] BLOCKER before the public form or Postmark intake ships: daily AI spend cap per workspace (§15.5), checked by the coordinator before it queues a run and by `structured()` before each model call
+- [ ] Before real intake: required env `GEMINI_KEY_TIER=free|paid`; on `free` the worker refuses runs for any workspace that isn't synthetic (§14.4, §15.4)
+- [ ] Citation validator: compare snippets with the neutralised text the model saw (`neutraliseTags`, llm-call skill)
 
 ## Milestone 3 — Research + Memo + dashboard
 - [ ] Research agent with Google Search grounding + source URLs + 30-day cache (live runs need billing on the key; tests use recorded fixtures)
@@ -53,6 +56,7 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Consider banning `withTransaction`/`Tx` in `apps/web` (ESLint), so the web app can't compose its own cross-table transactions
 
 ## Milestone 6 — Evaluation + launch
+- [ ] Sentry: scrub error objects, causes and parameters (database errors carry SQL and values; SDK errors can echo prompts) before anything is sent
 - [ ] Synthetic dataset (30 decks, 5 data rooms, 10 emails) + labels
 - [ ] Eval harness + first report
 - [ ] Demo deploy with nightly reset

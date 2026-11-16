@@ -477,7 +477,7 @@ flowchart LR
 | Email | **Postmark** | Inbound parsing webhook and outbound sending from one provider |
 | Chat | **Slack Web API + interactivity** | Cards, buttons, digests |
 | Errors | **Sentry** | Web and worker |
-| Hosting | **Railway** (web, worker, Postgres) + R2 | Long-running worker container with poppler |
+| Hosting | **Oracle Cloud Always Free** VM (web, worker, Postgres via Docker Compose, Caddy for HTTPS) + R2 | Free, always on, long-running worker container with poppler (§21) |
 
 ### 10.4 Flow: a pitch arrives by email
 
@@ -877,8 +877,8 @@ The measured results are the strongest sales asset; they turn a demo into eviden
 
 | Environment | Purpose | Data |
 |---|---|---|
-| `local` | Development on Windows; PostgreSQL 16 and MinIO run natively (no Docker) | Seed script |
-| `demo` | Public portfolio demo | Fictional fund, 30 synthetic deals; nightly reset |
+| `local` | Development on Windows; PostgreSQL 16 runs natively (no Docker). S3-compatible file storage: decision pending (R2 dev bucket or SeaweedFS; MinIO is no longer installable) | Seed script |
+| `demo` | Public portfolio demo on Oracle Cloud Always Free | Fictional fund, 30 synthetic deals; nightly reset |
 | `client` | Per-client deployment | Client data |
 
 **Client deployment options:**
@@ -890,7 +890,11 @@ The measured results are the strongest sales asset; they turn a demo into eviden
 
 Both run the same code; only environment configuration differs.
 
-**Worker runtime:** the worker runs TypeScript with `tsx`, locally and in its image, so the shared base config keeps Bundler module resolution. `apps/worker/Dockerfile` installs poppler and exists only for the Railway build. Local development doesn't use it.
+**Demo hosting (free):** one Oracle Cloud Always Free Ampere A1 VM (arm64) runs everything with Docker Compose: the web app (`next start`), the worker, PostgreSQL 16, and Caddy for HTTPS on the demo domain. Files live in an R2 bucket (free tier). Images are built for `linux/arm64`. A cron job on the VM runs the nightly demo reset. `main` deploys from GitHub Actions over SSH after CI passes.
+
+**Demo on the free Gemini tier:** the free tier is for synthetic data only (§14.4), so the demo never processes visitor content. On the demo, the public pitch form and file uploads are switched off; visitors explore the pre-screened synthetic deals and can re-run screening on bundled synthetic decks. Research shows recorded results from the synthetic dataset, because Google Search grounding isn't available on the free tier. The worker enforces this with the required `GEMINI_KEY_TIER` setting: on `free`, it refuses runs for any workspace not marked synthetic. Client deployments use a paid key and their own infrastructure.
+
+**Worker runtime:** the worker runs TypeScript with `tsx`, locally and in its image, so the shared base config keeps Bundler module resolution. `apps/worker/Dockerfile` installs poppler and is used for the demo and client deployments. Local development doesn't use it.
 
 **CI (GitHub Actions):** a Postgres 16 service container provides the database. Steps: typecheck → lint → unit tests (mandate, citation validator, claim checks, dependency rules, scoring math) → migrations check → eval smoke test (5 decks) → build → deploy on `main`. Environment variables are validated at boot; a missing one stops the process with a clear message.
 

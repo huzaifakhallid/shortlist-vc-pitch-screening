@@ -54,7 +54,7 @@ Before saying a task is done: `pnpm typecheck && pnpm lint && pnpm test` pass.
 
 ```
 apps/web            Next.js: dashboard, API routes (/v1), webhooks (/hooks)
-apps/worker         coordinator + agent runner (Dockerfile includes poppler, used for Railway only)
+apps/worker         coordinator + agent runner (Dockerfile includes poppler, used for the Oracle demo and client deployments)
 packages/agents/*   one folder per agent: definition.ts, steps/, prompts/, schema.ts, tests/
 packages/agents/shared  agent runtime types and llm.ts, the only file that imports the Gemini SDK
 packages/coordinator  event → enabled agents → jobs

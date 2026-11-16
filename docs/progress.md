@@ -59,6 +59,7 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Sentry: scrub error objects, causes and parameters (database errors carry SQL and values; SDK errors can echo prompts) before anything is sent
 - [ ] Synthetic dataset (30 decks, 5 data rooms, 10 emails) + labels
 - [ ] Eval harness + first report
-- [ ] Demo deploy with nightly reset
+- [ ] Demo deploy on Oracle Cloud Always Free (§21): arm64 images for web and worker, Docker Compose with Postgres 16 and Caddy (HTTPS), R2 bucket for files, GitHub Actions deploy over SSH after CI, cron nightly reset
+- [ ] Demo mode: public form and uploads off, screening re-runs only on bundled synthetic decks, Research from recorded results (free Gemini tier, §21)
 - [ ] Demo workspace safety: deny `integrations.manage` and `users.manage` to demo sessions, or rely on the nightly reset. Decide before those handlers ship
 - [ ] README (plain language first), 90-second video, case study, Upwork entry

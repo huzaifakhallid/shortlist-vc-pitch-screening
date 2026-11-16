@@ -26,6 +26,8 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Postmark inbound webhook (signature-verified) → Intake agent
 - [ ] Dedupe rules
 - [ ] Screening: render, page reading, hidden-text check, facts + profile, mandate, rubric scoring, citation validator, score
+- [x] Screening, rule-based slice (`packages/agents/screening`, not registered, no prompts or model calls yet): schemas for facts (each fact and deck profile value carries `{page, snippet}` citations; `dealFactsSchemaFor(filters)` limits stage and sector to the fund's lists plus `"other"`), deal profile, mandate result (fixed-order tuple) and rubric scores; `checkMandate` (case-insensitive list match, empty list = no filter, inclusive round range, unknown → NEEDS_REVIEW, any known fail → OUT_OF_MANDATE); `totalScore` (§7.2 step 8, fails fast when scores don't match the rubric keys); `citationIssues` (snippet of 12+ characters that is a whitespace-collapsed substring of the page's `neutraliseTags` visible text, issues by path only); `findHiddenSpans` (text-layer words not covered by a 3-word run of visible text, spans of 8+ words; thresholds uncalibrated, weak for scripts without spaces). Design §7.2 steps 4-7, §13 filters and §20.2 updated to match
+- [ ] Screening next slice: render + page reading + hidden-text step + facts/profile call (form-vs-deck mismatch over 25%) + scoring call, with `definition.ts`, prompts, registry entry. The facts call sends each page's visible text in its own block and its schema refines with `citationIssues`; scoring reads the facts only and cites their citations, its schema refined with rubric coverage and `citationIssues` against the page texts
 - [x] `llm.ts` builds each `ProviderError` message itself (HTTP status + reason); it never copies the SDK's message or `cause`, since those can echo prompt content into `agent_run.error`
 - [ ] Intake's narrow path (§11.1): create the deal in the same transaction as `finishRun` and take `deal.received`'s deal id from that insert, never from model output
 - [x] Before real model calls: `AgentDefinition.timeoutSeconds` is each job's `expireInSeconds`; the job's abort signal is `ctx.signal` and goes to every model call; an aborted attempt is rethrown without failing the run
@@ -39,7 +41,7 @@ Update this file when a task finishes. One line per task: `- [x] what (commit or
 - [ ] Before Research ships: add grounding per-request fees to `models.ts` costs so they count toward the cap
 - [ ] Demo: block workspace config saves (or cap `dailySpendCapMicros`) for demo sessions; the nightly reset must reseed from an empty database
 - [ ] Local dev database: after `0004`, a Kestrel workspace seeded earlier has `synthetic = false` and a config v1 without `dailySpendCapMicros` (the seed leaves an existing workspace unchanged, and now reports its config invalid). Recreate the database and run `pnpm db:migrate && pnpm db:seed` before running the worker against it
-- [ ] Citation validator: compare snippets with the neutralised text the model saw (`neutraliseTags`, llm-call skill)
+- [x] Citation validator: compare snippets with the neutralised text the model saw (`neutraliseTags`, llm-call skill): `packages/agents/screening/steps/citations.ts`
 
 ## Milestone 3 — Research + Memo + dashboard
 - [ ] Research agent with Google Search grounding + source URLs + 30-day cache (live runs need billing on the key; tests use recorded fixtures)

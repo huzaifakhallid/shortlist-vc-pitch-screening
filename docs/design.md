@@ -249,10 +249,10 @@ flowchart TD
 1. **Render:** `pdftoppm` at ~110 dpi; reject encrypted files or decks over 30 pages.
 2. **Read visually:** each page image goes to a vision model that returns slide type, visible text, metrics (with the exact source snippet) and chart descriptions. Charts with traction numbers are captured.
 3. **Hidden-text check:** compare the PDF's text layer with what is visibly on the page. Large invisible spans set an integrity flag shown to the team. The scorer never sees the text layer.
-4. **Facts and profile:** one call merges page extractions into `DealFacts` (problem, solution, market, traction, team, ask), each with page numbers. The **deal profile** (stage, sector, country, round size) uses form values where the founder gave them and deck values otherwise. Mismatches over 25% are flagged ("Form says $40k MRR; deck p.7 says $12k").
-5. **Mandate check (deterministic, no AI):** stage, sector, country, round size and exclusions against the fund's filters. A field that can't be determined gives `NEEDS_REVIEW`, never a decline.
-6. **Rubric scoring:** per criterion, reasoning first, then a 1–5 score, a confidence level and at least one citation `{page, snippet}`.
-7. **Citation validation (deterministic):** each snippet must appear on the cited page. One retry with the errors; a second failure fails the run visibly.
+4. **Facts and profile:** one call merges page extractions into `DealFacts` (problem, solution, market, traction, team, ask), each fact with at least one citation `{page, snippet}` quoting the page's visible text. The deck's profile values carry citations too. Stage and sector come from the fund's own vocabulary: the response schema is built from the config, with stage one of `filters.stages` or `"other"`, and sector one of `filters.sectors` ∪ `filters.excludedSectors` or `"other"`, each nullable (null = unknown; `"other"` is a known value outside the fund's lists). An empty fund list gives `"other"` alone, which is harmless because an empty list means no filter (§13). The **deal profile** (stage, sector, country, round size) uses form values where the founder gave them and deck values otherwise. Mismatches over 25% are flagged ("Form says $40k MRR; deck p.7 says $12k").
+5. **Mandate check (deterministic, no AI):** stage, sector, country, round size and exclusions against the fund's filters, one result per rule (pass, fail or unknown, with a reason) in that fixed order. Lists compare case-insensitively and an empty list is no filter (§13); the round size range is inclusive (`min ≤ size ≤ max`); a sector in `excludedSectors` fails. A field that can't be determined is unknown, never a fail: an unknown round size, for example, always means `NEEDS_REVIEW` rather than a decline. Outcome: any known value that fails → `OUT_OF_MANDATE`; otherwise any unknown → `NEEDS_REVIEW`; otherwise in mandate and on to scoring. So a decline always rests on a known value.
+6. **Rubric scoring:** reads the facts only (never slide text or the text layer, §14.3). Per criterion, reasoning first, then a 1–5 score, a confidence level and at least one citation `{page, snippet}`, taken from the facts' citations.
+7. **Citation validation (deterministic):** each snippet must appear on the cited page, for the facts' citations (step 4) and the scores' citations (step 6). "Appears" means: the page text is that page's visible text from step 2 (never the PDF text layer), passed through `neutraliseTags` as the model saw it, page by page (each page goes to the facts call in its own block); in both page text and snippet every run of whitespace becomes one space and the ends are trimmed; the snippet must then be at least 12 characters (code points) and an exact substring of the page text (case, punctuation and digits as written). A failing citation is reported by its path, never its content. One retry with the errors; a second failure fails the run visibly.
 8. **Score:** `total = Σ (score_i / 5) × weight_i`, weights summing to 100.
 
 ### 7.3 Research Agent
@@ -681,6 +681,8 @@ One versioned JSON document per workspace, validated by one schema at save time:
 | 1. Schema | Weights not summing to 100; duplicate rubric keys; missing 1/3/5 anchors; an enabled agent whose dependency is disabled (§8.3) | `packages/schemas`, from the config alone |
 | 2. Workspace | Routing to a non-partner; an enabled integration-backed setting (CRM, Slack) without a connected integration | The save path, against the database |
 
+**Filters.** An empty `stages`, `sectors` or `countries` list means the fund doesn't filter on that field, and an empty `excludedSectors` excludes nothing; the mandate check passes those rules even when the deal's value is unknown. Stage, sector and country values are compared case-insensitively, ignoring surrounding whitespace. `roundSizeUsd` is inclusive at both ends (§7.2 step 5).
+
 `pipeline.crm` and `pipeline.slackChannel` may be `null`, meaning that integration isn't in use. The example above shows a fully connected fund. The seeded demo workspace sets both to `null`, so it passes stage 2 until sandboxes are connected in milestone 4.
 
 `dailySpendCapMicros` is the daily AI spend cap (§15.5): the workspace's model spend per UTC day, in integer micro-dollars like every cost (§12). It is required and positive; the seeded demo workspace sets $5.
@@ -863,7 +865,7 @@ The measured results are the strongest sales asset; they turn a demo into eviden
 | Agent | Metric |
 |---|---|
 | Intake | Field extraction accuracy; duplicate detection precision/recall |
-| Screening | Spearman ρ vs humans; top-20% recall; stability; chart-only metric extraction; injection flags; mismatch flags |
+| Screening | Spearman ρ vs humans; top-20% recall; stability; chart-only metric extraction; injection flags; hidden-text false-flag rate on clean decks; mismatch flags |
 | Research | Citation validity; factual accuracy on a 20-claim manual sample |
 | Memo | Every number cited; no claim absent from facts or research (checked by a separate grader model + manual sample) |
 | Comms | Zero unapproved sends in tests; tone review of 20 drafts |

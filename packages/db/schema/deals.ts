@@ -36,7 +36,9 @@ export const company = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     workspaceId: workspaceId(),
     name: text("name").notNull(),
-    domainNormalized: text("domain_normalized").notNull(),
+    // Null when the pitch states no usable company domain (no website, or a
+    // shared host, §7.1). NULLs are distinct under the unique key below.
+    domainNormalized: text("domain_normalized"),
     createdAt: createdAt(),
   },
   (t) => [

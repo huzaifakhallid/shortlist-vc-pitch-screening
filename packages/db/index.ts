@@ -9,6 +9,10 @@ export {
   saveConfigVersion,
   type ActiveConfig,
 } from "./access/config";
+export {
+  findDuplicateCandidates,
+  type DuplicateCandidates,
+} from "./access/deal";
 export { getEvent, insertEvent, type StoredEvent } from "./access/event";
 export { listConnectedKinds } from "./access/integration";
 export {

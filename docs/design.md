@@ -215,7 +215,13 @@ Every agent is defined by the same contract:
 
 - **Channels:** a hosted submission form; a forwarding address (`pitches+{workspace}@in.shortlist.dev`) the fund auto-forwards its deal inbox to; CSV or API import.
 - **Email handling:** the agent extracts company name, website, founder contact and stated round from the email body (structured output) and takes the PDF attachment as the deck. A link-only deck (e.g., an access-gated hosted deck) is not guessed at: the deal stays in `RECEIVED` with no deck on its submission, and the dashboard shows "Needs deck", derived from that missing deck.
-- **Duplicates:** same normalized company domain, or same founder email within 90 days, links the pitch to the existing deal as a resubmission.
+- **Duplicates:** same normalized company domain, or same founder email within 90 days, links the pitch to the existing deal as a resubmission. Plain code (`packages/agents/intake/steps/dedupe.ts`), read conservatively so unrelated pitches are never merged:
+  - *Company domain:* from the stated website only (never from the founder's email domain). Lowercased host (IDN as punycode) without scheme, port, path, query, trailing dot or one leading `www.`; other subdomains are kept (`app.acme.com` ≠ `acme.com`, no public-suffix merging). A website that isn't an http(s) address with a dotted host name, carries credentials, or is an IP address, is rejected. A website on a shared host (a fixed list: link, profile, document and social sites such as `linktr.ee`, `github.com`, `docsend.com`, `notion.so`, and their subdomains) gives "no company domain, shared host", recorded on the decision like "no company domain, no website". A normalized host is not safe to fetch (it may resolve to a private address).
+  - *Domain rule:* when the pitch has a company domain, a match links to that company's latest deal, with no time window, if the founder email is on the company domain (exactly; a subdomain doesn't count) or on an earlier submission of that deal. Otherwise it is a **possible duplicate**: someone could be claiming another founder's company, so a partner confirms the link before it is made. No domain match means a new deal: the email rule never overrides a stated domain.
+  - *Email rule:* only when the pitch has no company domain (no website or a shared host). The email is trimmed and lowercased (ASCII only, local part an RFC 5322 dot-atom; plus tags and dots kept). It links to the deal of the workspace's latest submission from that address when that submission is at most 90 days old (inclusive), measured against the database clock.
+  - *The fund's own addresses:* a founder email on the workspace's intake domain or a member's email domain (or a subdomain of one) fails the run visibly: it's a forwarding or setup mistake, never a founder.
+  - *Founder contact:* a resubmission adds a submission; it never changes the deal's founder contact. Founder Comms writes to the founder email on the deal's first submission.
+  - The dedupe query (`findDuplicateCandidates`) returns the facts (latest deal per domain and whether the founder email is on one of its submissions, latest submission per email whatever its age); the rules above decide. Stored `company.domain_normalized` (null without a company domain) and `submission.founder_email` hold these normalized values.
 - **When Intake is off:** deals enter through manual upload or the API.
 
 ### 7.2 Screening Agent
@@ -291,7 +297,7 @@ flowchart TD
 | | |
 |---|---|
 | Trigger | `deal.received`, `deal.out_of_mandate`, stage changes, missing deck sections |
-| Needs | Founder email |
+| Needs | Founder email (from the deal's first submission; a resubmission never changes it, §7.1) |
 | Produces | Message drafts |
 | Side effects | Sends email from the fund's verified domain |
 | Approval | Required by default; see below |
@@ -603,9 +609,9 @@ erDiagram
 | `api_key` | workspace_id, name, key_hash, scopes, created_by, last_used_at, revoked_at |
 | `config_version` | workspace_id, version, config (jsonb, Zod-validated), is_active, created_by |
 | `integration` | workspace_id, kind (`slack`/`hubspot`/`airtable`/`sheets`/`postmark_domain`), credentials (encrypted), status, last_error |
-| `company` | workspace_id, name, domain_normalized (unique per workspace) |
+| `company` | workspace_id, name, domain_normalized (nullable: no website or a shared host, §7.1; unique per workspace, NULLs distinct) |
 | `deal` | workspace_id, company_id, stage, profile (jsonb), total_score, integrity_flag, assigned_partner_id |
-| `submission` | deal_id, channel, form_data, founder_email, deck_object_key, deck_sha256, raw_email_key |
+| `submission` | deal_id, channel, form_data, founder_email (normalized, §7.1), deck_object_key, deck_sha256, raw_email_key |
 | `document` | deal_id, kind (`deck`/`financials`/`cap_table`/`other`), object_key, uploaded_by |
 | `event` | workspace_id, deal_id (nullable: §8.2), type, payload, created_at, processed_at, dispatch_attempts, dispatch_error |
 | `agent_run` | workspace_id, deal_id (nullable: an Intake run starts before its deal exists), agent, trigger_event_id, config_version_id, prompt_version, model, input_hash, status, output (jsonb), tokens_in, tokens_out, cost_micros, latency_ms, error; unique (agent, trigger_event_id) |

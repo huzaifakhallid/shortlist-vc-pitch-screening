@@ -1,0 +1,1 @@
+ALTER TABLE "company" ALTER COLUMN "domain_normalized" DROP NOT NULL;

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseEnv, webEnvSchema, workerEnvSchema } from "../src/env";
+import {
+  parseEnv,
+  storageEnvSchema,
+  webEnvSchema,
+  workerEnvSchema,
+} from "../src/env";
 
 const validWebEnv = {
   DATABASE_URL: "postgres://shortlist:shortlist@localhost:5432/shortlist",
@@ -79,6 +84,39 @@ describe("parseEnv", () => {
       expect(() =>
         parseEnv(workerEnvSchema, { ...worker, GEMINI_KEY_TIER: tier }),
       ).toThrow("Missing or invalid environment variables: GEMINI_KEY_TIER");
+    }
+  });
+});
+
+describe("storageEnvSchema", () => {
+  const storage = {
+    R2_ENDPOINT: "https://0123456789abcdef.r2.cloudflarestorage.com",
+    R2_ACCESS_KEY_ID: "test-access-key-id",
+    R2_SECRET_ACCESS_KEY: "test-secret-access-key",
+    R2_BUCKET: "shortlist-dev",
+  };
+
+  it("needs all four R2 variables", () => {
+    expect(parseEnv(storageEnvSchema, storage)).toEqual(storage);
+    expect(() => parseEnv(storageEnvSchema, {})).toThrow(
+      "Missing or invalid environment variables: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET",
+    );
+  });
+
+  it("takes only an https R2 endpoint and an S3-style bucket name", () => {
+    for (const R2_ENDPOINT of [
+      "http://0123456789abcdef.r2.cloudflarestorage.com",
+      "0123456789abcdef.r2.cloudflarestorage.com",
+      "",
+    ]) {
+      expect(() =>
+        parseEnv(storageEnvSchema, { ...storage, R2_ENDPOINT }),
+      ).toThrow("Missing or invalid environment variables: R2_ENDPOINT");
+    }
+    for (const R2_BUCKET of ["", "ab", "Shortlist", "shortlist_dev", "-dev"]) {
+      expect(() =>
+        parseEnv(storageEnvSchema, { ...storage, R2_BUCKET }),
+      ).toThrow("Missing or invalid environment variables: R2_BUCKET");
     }
   });
 });

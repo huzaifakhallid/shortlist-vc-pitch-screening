@@ -18,7 +18,7 @@ AI agents that screen startup pitches for VC firms. Seven agents (Intake, Screen
 
 ## Stack
 
-TypeScript (strict) · pnpm workspaces · Next.js App Router · Tailwind CSS v4 + shadcn/ui · PostgreSQL 16 + Drizzle · pg-boss · Cloudflare R2 (MinIO locally) · Google Gemini API · Postmark · Slack Web API · Zod · Vitest · Playwright · Sentry.
+TypeScript (strict) · pnpm workspaces · Next.js App Router · Tailwind CSS v4 + shadcn/ui · PostgreSQL 16 + Drizzle · pg-boss · Cloudflare R2 (separate dev bucket locally) · Google Gemini API · Postmark · Slack Web API · Zod · Vitest · Playwright · Sentry.
 
 Do not add a dependency that duplicates one of these. A new dependency needs a one-line reason in the PR/commit message.
 
@@ -37,10 +37,11 @@ pnpm typecheck
 pnpm lint
 pnpm test                   # Vitest
 pnpm test:e2e               # Playwright
+pnpm test:integrations      # live R2 round trip; skips unless R2_* env is set
 pnpm eval                   # evaluation harness, writes eval/reports/
 ```
 
-Local development has no Docker: PostgreSQL 16 and MinIO run natively on Windows (design §21). Both must be running before `pnpm db:migrate`, `pnpm dev` or `pnpm worker`. MinIO isn't installed yet (see `docs/progress.md`).
+Local development has no Docker: PostgreSQL 16 runs natively on Windows and file storage is an R2 dev bucket (design §21). Postgres must be running before `pnpm db:migrate`, `pnpm dev` or `pnpm worker`.
 
 Postgres runs from `%LOCALAPPDATA%\shortlist-dev` and isn't a Windows service, so start it after a reboot, in PowerShell:
 

@@ -12,6 +12,7 @@
     "typecheck": "tsc && pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:integrations": "pnpm --filter @shortlist/integrations test:live",
     "format": "prettier --write .",
     "db:generate": "pnpm --filter @shortlist/db generate",
     "db:migrate": "pnpm --filter @shortlist/db migrate",

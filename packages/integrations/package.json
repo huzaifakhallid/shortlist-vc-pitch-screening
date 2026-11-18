@@ -1,0 +1,21 @@
+{
+  "name": "@shortlist/integrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./storage": "./storage/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:live": "tsx storage/tests/live.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1170.0",
+    "@aws-sdk/s3-request-presigner": "^3.1170.0",
+    "@shortlist/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}

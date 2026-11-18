@@ -29,7 +29,7 @@ import {
   agentRunJobSchema,
   createAgentRunQueue,
 } from "../queue";
-import { listener } from "./agents";
+import { fullRegistry } from "./agents";
 import { startTestBoss } from "./boss";
 
 let boss: PgBoss;
@@ -59,10 +59,9 @@ async function dealReceived(t: TestWorkspace) {
   );
 }
 
-const registry = [
-  listener("screening", ["deal.received"]),
-  listener("pipeline", ["deal.received"]),
-];
+// Every agent registered. With configFor's settings, deal.received goes to
+// Screening, Comms and Pipeline (Research waits for Screening, §8.2).
+const registry = fullRegistry();
 
 // A workspace with a $0.001 cap that has spent it today.
 async function overCap(): Promise<TestWorkspace> {
@@ -84,13 +83,14 @@ describe("dispatchEvents", () => {
 
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 1,
-      runs: 2,
+      runs: 3,
       failed: 0,
       deferred: 0,
     });
 
     const runs = await listTestRuns(t.workspace.id);
     expect(runs.map((run) => run.agent).sort()).toEqual([
+      "comms",
       "pipeline",
       "screening",
     ]);
@@ -120,13 +120,13 @@ describe("dispatchEvents", () => {
 
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 1,
-      runs: 1,
+      runs: 2,
       failed: 0,
       deferred: 0,
     });
-    expect((await listTestRuns(t.workspace.id)).map((r) => r.agent)).toEqual([
-      "screening",
-    ]);
+    expect(
+      (await listTestRuns(t.workspace.id)).map((r) => r.agent).sort(),
+    ).toEqual(["comms", "screening"]);
     expect(await dispatchEvents(boss, registry)).toEqual(nothing);
   });
 
@@ -144,14 +144,11 @@ describe("dispatchEvents", () => {
     await saveConfigVersion(t.workspace.id, config, t.partner.id);
     await dealReceived(t);
 
-    const memoOnReceived = [listener("memo", ["deal.received"])];
-    expect(await dispatchEvents(boss, memoOnReceived)).toEqual({
-      events: 1,
-      runs: 0,
-      failed: 0,
-      deferred: 0,
-    });
-    expect(await listTestRuns(t.workspace.id)).toEqual([]);
+    // Research takes deal.received while Screening is off (§8.2); no Memo.
+    expect(await dispatchEvents(boss, registry)).toMatchObject({ runs: 3 });
+    expect(
+      (await listTestRuns(t.workspace.id)).map((r) => r.agent).sort(),
+    ).toEqual(["comms", "pipeline", "research"]);
   });
 
   it("dispatches each event once", async () => {
@@ -161,8 +158,8 @@ describe("dispatchEvents", () => {
 
     await dispatchEvents(boss, registry);
     expect(await dispatchEvents(boss, registry)).toEqual(nothing);
-    expect(await listTestRuns(t.workspace.id)).toHaveLength(2);
-    expect(await boss.findJobs(AGENT_RUN_QUEUE)).toHaveLength(2);
+    expect(await listTestRuns(t.workspace.id)).toHaveLength(3);
+    expect(await boss.findJobs(AGENT_RUN_QUEUE)).toHaveLength(3);
   });
 
   it("rolls back a failing event alone and records why", async () => {
@@ -175,11 +172,11 @@ describe("dispatchEvents", () => {
 
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 2,
-      runs: 2,
+      runs: 3,
       failed: 1,
       deferred: 0,
     });
-    expect(await listTestRuns(t.workspace.id)).toHaveLength(2);
+    expect(await listTestRuns(t.workspace.id)).toHaveLength(3);
     expect(await getTestEventRow(good.id)).toMatchObject({
       dispatchAttempts: 0,
       dispatchError: null,
@@ -232,7 +229,7 @@ describe("dispatchEvents", () => {
     // Still unprocessed, so the next tick takes it.
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 1,
-      runs: 2,
+      runs: 3,
       failed: 0,
       deferred: 0,
     });
@@ -310,10 +307,9 @@ describe("dispatchEvents", () => {
 
     await rollTestDayOver(t.workspace.id);
     const send = vi.spyOn(boss, "send");
-    const screeningOnly = [listener("screening", ["deal.received"])];
-    expect(await dispatchEvents(boss, screeningOnly)).toEqual({
+    expect(await dispatchEvents(boss, registry)).toEqual({
       events: 3,
-      runs: 3,
+      runs: 9,
       failed: 0,
       deferred: 0,
     });
@@ -322,7 +318,8 @@ describe("dispatchEvents", () => {
     const sentFor = send.mock.calls.map(([, data]) =>
       triggerOf.get(agentRunJobSchema.parse(data).runId),
     );
-    expect(sentFor).toEqual(events.map((e) => e.id));
+    // Three runs per event, events in order.
+    expect(sentFor).toEqual(events.flatMap((e) => [e.id, e.id, e.id]));
     for (const e of events) {
       expect((await getTestEventRow(e.id)).processedAt).toBeInstanceOf(Date);
     }
@@ -337,7 +334,7 @@ describe("dispatchEvents", () => {
 
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 2,
-      runs: 2,
+      runs: 3,
       failed: 0,
       deferred: 1,
     });
@@ -350,7 +347,7 @@ describe("dispatchEvents", () => {
     await dealReceived(t);
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 1,
-      runs: 2,
+      runs: 3,
       failed: 0,
       deferred: 0,
     });
@@ -369,7 +366,7 @@ describe("dispatchEvents", () => {
 
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 1,
-      runs: 2,
+      runs: 3,
       failed: 0,
       deferred: 0,
     });
@@ -379,6 +376,15 @@ describe("dispatchEvents", () => {
     const t = await createTestWorkspace("kestrel");
     const config = configFor(t.partner.id);
     config.dailySpendCapMicros = 1_000;
+    for (const key of [
+      "screening",
+      "research",
+      "memo",
+      "comms",
+      "pipeline",
+    ] as const) {
+      config.agents[key].enabled = false;
+    }
     const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
     await recordTestSpend(t.workspace.id, saved.id, 5_000);
     const event = await dealReceived(t);
@@ -390,5 +396,25 @@ describe("dispatchEvents", () => {
       deferred: 0,
     });
     expect((await getTestEventRow(event.id)).processedAt).toBeInstanceOf(Date);
+  });
+
+  it("fails the dispatch visibly when an enabled agent isn't registered", async () => {
+    const t = await createTestWorkspace("kestrel");
+    await saveTestConfig(t);
+    const event = await dealReceived(t);
+
+    expect(await dispatchEvents(boss, fullRegistry("comms"))).toEqual({
+      events: 1,
+      runs: 0,
+      failed: 1,
+      deferred: 0,
+    });
+    // None of the event's runs commit, and it stays unprocessed.
+    expect(await listTestRuns(t.workspace.id)).toEqual([]);
+    expect(await getTestEventRow(event.id)).toMatchObject({
+      processedAt: null,
+      dispatchAttempts: 1,
+      dispatchError: `Agent "comms" is enabled and takes deal.received, but this worker doesn't register it`,
+    });
   });
 });

@@ -131,7 +131,10 @@ describe("verifyDeckUpload", () => {
       .verifyDeckUpload(WORKSPACE, newDeckKey(WORKSPACE), size)
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(InvalidUploadError);
-    expect(error).toMatchObject({ message: "No deck was uploaded" });
+    expect(error).toMatchObject({
+      reason: "not_uploaded",
+      message: "No deck was uploaded",
+    });
   });
 
   it("rejects a size that differs from the declared one", async () => {
@@ -141,9 +144,10 @@ describe("verifyDeckUpload", () => {
     });
     await expect(
       storage.verifyDeckUpload(WORKSPACE, newDeckKey(WORKSPACE), size),
-    ).rejects.toThrow(
-      "The uploaded deck's size doesn't match the declared size",
-    );
+    ).rejects.toMatchObject({
+      reason: "size",
+      message: "The uploaded deck's size doesn't match the declared size",
+    });
     expect(sent).toHaveLength(1);
   });
 
@@ -154,7 +158,10 @@ describe("verifyDeckUpload", () => {
     });
     await expect(
       storage.verifyDeckUpload(WORKSPACE, newDeckKey(WORKSPACE), size),
-    ).rejects.toThrow("The uploaded deck isn't a PDF");
+    ).rejects.toMatchObject({
+      reason: "type",
+      message: "The uploaded deck isn't a PDF",
+    });
   });
 
   it("rejects a file that doesn't start with the PDF magic bytes", async () => {
@@ -162,9 +169,11 @@ describe("verifyDeckUpload", () => {
       ...firstBytes,
       body: new TextEncoder().encode("<html"),
     });
-    await expect(
-      storage.verifyDeckUpload(WORKSPACE, newDeckKey(WORKSPACE), size),
-    ).rejects.toThrow(InvalidUploadError);
+    const error: unknown = await storage
+      .verifyDeckUpload(WORKSPACE, newDeckKey(WORKSPACE), size)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(InvalidUploadError);
+    expect(error).toMatchObject({ reason: "type" });
   });
 
   it("fails when the object changes between the HEAD and the GET", async () => {

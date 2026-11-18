@@ -23,6 +23,7 @@ export {
   type Membership,
   type UserMembership,
 } from "./access/membership";
+export { consumeRateLimit } from "./access/rate-limit";
 export {
   createRun,
   finishRun,
@@ -39,6 +40,14 @@ export {
   type StepUsage,
 } from "./access/step";
 export { getSpendTodayMicros } from "./access/spend";
+export {
+  createPendingUpload,
+  deletePendingUpload,
+  getPendingUpload,
+  submitPitchForm,
+  UploadNotConfirmableError,
+  type PendingUpload,
+} from "./access/upload";
 export { createUser, getUserByEmail, type User } from "./access/user";
 export {
   createWorkspace,

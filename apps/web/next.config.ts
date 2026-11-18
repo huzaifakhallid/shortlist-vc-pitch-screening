@@ -14,7 +14,12 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   // Workspace packages ship TypeScript source.
-  transpilePackages: ["@shortlist/db", "@shortlist/schemas"],
+  transpilePackages: [
+    "@shortlist/agents-intake",
+    "@shortlist/db",
+    "@shortlist/integrations",
+    "@shortlist/schemas",
+  ],
   turbopack: {
     rules: {
       "*.css": {

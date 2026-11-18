@@ -1,5 +1,6 @@
 import { agentRegistry } from "@shortlist/agents-shared";
 
-// The agents this worker runs; the coordinator queues runs for these only.
-// Empty until milestone 2 adds Intake and Screening, so no runs are created.
+// The agents this worker runs. Every agent a workspace enables must be here:
+// the coordinator fails an event's dispatch when one that takes it isn't.
+// Empty until milestone 2 adds Intake and Screening.
 export const registry = agentRegistry([]);

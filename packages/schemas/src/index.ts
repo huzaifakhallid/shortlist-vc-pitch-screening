@@ -3,5 +3,6 @@ export * from "./config";
 export * from "./deal";
 export * from "./env";
 export * from "./events";
+export * from "./pitch";
 export * from "./roles";
 export * from "./stages";

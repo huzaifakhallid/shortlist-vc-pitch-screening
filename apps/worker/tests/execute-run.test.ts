@@ -21,11 +21,7 @@ import {
   type AgentRun,
 } from "@shortlist/db";
 import { claimUnprocessedEventsAcrossWorkspaces } from "@shortlist/db/coordinator";
-import type {
-  EventType,
-  GeminiKeyTier,
-  ShortlistEvent,
-} from "@shortlist/schemas";
+import type { GeminiKeyTier, ShortlistEvent } from "@shortlist/schemas";
 import type { PgBoss } from "pg-boss";
 import {
   afterAll,
@@ -71,15 +67,17 @@ afterAll(async () => {
 type TestAgent = AgentDefinition<{ eventId: string }, { score: number }>;
 
 // A test-only agent under a real key (agent_run.agent is an enum of the
-// seven); the worker's own registry stays empty. Two steps, then one event.
+// seven) that §8.2 routes its event to: Intake for email.received, Screening
+// for deal.received. The worker's own registry stays empty. Two steps, then
+// one event.
 function testAgent(options: {
-  listensTo: EventType;
+  listensTo: "deal.received" | "email.received";
   score: (ctx: AgentContext) => Promise<number>;
   emits: ShortlistEvent;
 }) {
   const calls = { read: 0, score: 0 };
   const agent: TestAgent = {
-    key: "screening",
+    key: options.listensTo === "email.received" ? "intake" : "screening",
     listensTo: [options.listensTo],
     promptVersion: "test.v1",
     model: "test-model",
@@ -171,6 +169,9 @@ async function dispatchedRun(
     synthetic: workspace.synthetic ?? false,
   });
   const config = configFor(t.partner.id);
+  // deal.received goes to Screening only: the test agent is the one run.
+  config.agents.comms.enabled = false;
+  config.agents.pipeline.enabled = false;
   if (workspace.dailySpendCapMicros !== undefined) {
     config.dailySpendCapMicros = workspace.dailySpendCapMicros;
   }

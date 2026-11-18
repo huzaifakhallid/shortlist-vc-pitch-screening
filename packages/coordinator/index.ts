@@ -6,4 +6,4 @@ export {
   createAgentRunQueue,
   type AgentRunJob,
 } from "./queue";
-export { agentsFor } from "./routing";
+export { agentsFor, LISTENERS, UnroutableEventError } from "./routing";

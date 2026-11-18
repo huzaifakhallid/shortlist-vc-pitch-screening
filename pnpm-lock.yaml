@@ -193,9 +193,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@shortlist/agents-intake':
+        specifier: workspace:*
+        version: link:../../packages/agents/intake
       '@shortlist/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@shortlist/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@shortlist/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas

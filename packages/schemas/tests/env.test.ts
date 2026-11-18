@@ -11,12 +11,16 @@ const validWebEnv = {
   AUTH_SECRET: "a".repeat(32),
   APP_URL: "http://localhost:3000",
   DEMO_LOGINS: "false",
+  R2_ENDPOINT: "https://0123456789abcdef.r2.cloudflarestorage.com",
+  R2_ACCESS_KEY_ID: "test-access-key-id",
+  R2_SECRET_ACCESS_KEY: "test-secret-access-key",
+  R2_BUCKET: "shortlist-dev",
 };
 
 describe("parseEnv", () => {
   it("names every missing variable", () => {
     expect(() => parseEnv(webEnvSchema, {})).toThrow(
-      "Missing or invalid environment variables: DATABASE_URL, AUTH_SECRET, APP_URL, DEMO_LOGINS",
+      "Missing or invalid environment variables: DATABASE_URL, AUTH_SECRET, APP_URL, DEMO_LOGINS, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET",
     );
   });
 

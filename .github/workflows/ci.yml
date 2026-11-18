@@ -31,6 +31,11 @@ jobs:
       AUTH_SECRET: ci-only-auth-secret-not-used-anywhere-else-000
       APP_URL: http://localhost:3000
       DEMO_LOGINS: "false"
+      # The web env needs R2 names; nothing in CI calls R2 (presigning is local).
+      R2_ENDPOINT: https://ci-only-account.r2.cloudflarestorage.com
+      R2_ACCESS_KEY_ID: ci-only-access-key-id
+      R2_SECRET_ACCESS_KEY: ci-only-secret-access-key
+      R2_BUCKET: shortlist-ci
 
     steps:
       - uses: actions/checkout@v5

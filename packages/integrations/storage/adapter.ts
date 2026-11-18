@@ -32,11 +32,19 @@ export type DeckUpload = {
 };
 
 // An upload that doesn't match what was presigned, or isn't a PDF. Its
-// message is safe to show the person uploading.
+// message is safe to show the person uploading. `reason` "not_uploaded"
+// means no object exists (yet): there is nothing to delete, and the upload
+// may still be in flight. The other reasons mean the stored object is
+// unusable and the caller deletes it.
+export type InvalidUploadReason = "not_uploaded" | "size" | "type";
+
 export class InvalidUploadError extends Error {
-  constructor(message: string) {
+  readonly reason: InvalidUploadReason;
+
+  constructor(reason: InvalidUploadReason, message: string) {
     super(message);
     this.name = "InvalidUploadError";
+    this.reason = reason;
   }
 }
 
@@ -55,8 +63,9 @@ export type DeckStorage = {
   ): Promise<DeckUpload>;
   // Returns the verified object's ETag; later reads pass it, so the deck that
   // was verified is the one that is read. Throws InvalidUploadError when
-  // nothing was uploaded or the object isn't a PDF of the declared size. The
-  // caller deletes a rejected upload (deleteDeck).
+  // nothing was uploaded ("not_uploaded") or the object isn't a PDF of the
+  // declared size ("size", "type"). The caller deletes a rejected object
+  // (deleteDeck), never a "not_uploaded" one.
   verifyDeckUpload(
     workspaceId: string,
     key: string,
@@ -76,11 +85,13 @@ export function hasPdfMagic(bytes: Uint8Array): boolean {
 function assertDeckSize(sizeBytes: number): void {
   if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) {
     throw new InvalidUploadError(
+      "size",
       "The deck's size must be a positive number of bytes",
     );
   }
   if (sizeBytes > MAX_DECK_BYTES) {
     throw new InvalidUploadError(
+      "size",
       `The deck is larger than ${String(MAX_DECK_BYTES / (1024 * 1024))} MB`,
     );
   }
@@ -129,17 +140,18 @@ export function deckStorage(client: S3Client, bucket: string): DeckStorage {
         client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
       ).catch((error: unknown) => {
         if (error instanceof IntegrationError && error.status === 404) {
-          throw new InvalidUploadError("No deck was uploaded");
+          throw new InvalidUploadError("not_uploaded", "No deck was uploaded");
         }
         throw error;
       });
       if (head.ContentLength !== sizeBytes) {
         throw new InvalidUploadError(
+          "size",
           "The uploaded deck's size doesn't match the declared size",
         );
       }
       if (head.ContentType !== DECK_CONTENT_TYPE) {
-        throw new InvalidUploadError("The uploaded deck isn't a PDF");
+        throw new InvalidUploadError("type", "The uploaded deck isn't a PDF");
       }
       const etag = head.ETag;
       if (etag === undefined) {
@@ -157,7 +169,7 @@ export function deckStorage(client: S3Client, bucket: string): DeckStorage {
         PDF_MAGIC.length,
       );
       if (!hasPdfMagic(start)) {
-        throw new InvalidUploadError("The uploaded deck isn't a PDF");
+        throw new InvalidUploadError("type", "The uploaded deck isn't a PDF");
       }
       return etag;
     },

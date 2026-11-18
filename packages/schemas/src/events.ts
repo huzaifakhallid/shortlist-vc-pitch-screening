@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pitchFormSchema, submittedDeckSchema } from "./pitch";
 import { dealStageSchema } from "./stages";
 
 // The §8.2 event table. A payload has fields only where the design states its
@@ -29,9 +30,21 @@ export const stageChangedPayloadSchema = z.strictObject({
   source: stageChangeSourceSchema,
 });
 
+// A pitch from the public form (§7.1): what the founder entered and the
+// verified deck. No deal exists yet; Intake creates it from this payload.
+// Every form.* field is untrusted founder text: it reaches a model only as
+// untrusted content inside prompt.ts's delimiters, never as an instruction.
+export const formSubmittedPayloadSchema = z.strictObject({
+  form: pitchFormSchema,
+  deck: submittedDeckSchema,
+});
+
 export const eventSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("email.received"), payload: emptyPayload }),
-  z.strictObject({ type: z.literal("form.submitted"), payload: emptyPayload }),
+  z.strictObject({
+    type: z.literal("form.submitted"),
+    payload: formSubmittedPayloadSchema,
+  }),
   z.strictObject({ type: z.literal("deal.received"), payload: emptyPayload }),
   z.strictObject({ type: z.literal("deal.screened"), payload: emptyPayload }),
   z.strictObject({

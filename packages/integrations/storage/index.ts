@@ -7,6 +7,7 @@ export {
   DECK_CONTENT_TYPE,
   DeckChangedError,
   InvalidUploadError,
+  type InvalidUploadReason,
   MAX_DECK_BYTES,
   UPLOAD_URL_EXPIRY_SECONDS,
   type DeckStorage,

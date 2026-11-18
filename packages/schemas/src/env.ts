@@ -10,9 +10,9 @@ const flag = z.enum(["true", "false"]).transform((value) => value === "true");
 export const geminiKeyTierSchema = z.enum(["free", "paid"]);
 export type GeminiKeyTier = z.infer<typeof geminiKeyTierSchema>;
 
-// Deck storage on Cloudflare R2 through its S3 API (§10.3, §15.3). Not yet
-// part of the web or worker env: the web app adds it with the upload route,
-// the worker with Screening's deck reads.
+// Deck storage on Cloudflare R2 through its S3 API (§10.3, §15.3). Part of
+// the web env (the pitch form's presigned uploads); the worker adds it with
+// Screening's deck reads.
 export const storageEnvSchema = z.object({
   // The account's S3 API endpoint, https://<ACCOUNT_ID>.r2.cloudflarestorage.com
   R2_ENDPOINT: z.url({ protocol: /^https$/ }),
@@ -29,6 +29,7 @@ export const webEnvSchema = z.object({
   APP_URL: appUrl,
   // One-click sign-in as the seeded demo personas (§23.1). Local and demo only.
   DEMO_LOGINS: flag,
+  ...storageEnvSchema.shape,
 });
 export type WebEnv = z.infer<typeof webEnvSchema>;
 

@@ -10,7 +10,9 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@shortlist/agents-intake": "workspace:*",
     "@shortlist/db": "workspace:*",
+    "@shortlist/integrations": "workspace:*",
     "@shortlist/schemas": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",

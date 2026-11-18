@@ -13,7 +13,7 @@ describe("events", () => {
     const dealId = await createTestDeal(b.workspace.id);
     const first = await withTransaction((tx) =>
       insertEvent(tx, a.workspace.id, {
-        type: "form.submitted",
+        type: "email.received",
         dealId: null,
         payload: {},
       }),

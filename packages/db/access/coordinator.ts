@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { fromDrizzle, type Db as JobDb } from "pg-boss";
 import { single, type Tx } from "../client";
 import { event } from "../schema";
@@ -16,7 +16,8 @@ export { selectSpendTodayMicros } from "./spend";
 // dispatch_error says why.
 export const MAX_DISPATCH_ATTEMPTS = 3;
 
-// The one cross-workspace read: the coordinator polls every workspace's events.
+// The one cross-workspace read: the coordinator polls every workspace's events,
+// except those deferred by the spend cap until a time still ahead (DB clock).
 // Rows stay locked until `tx` ends, so concurrent coordinators skip them.
 // "no key update" lets agent_run rows reference a claimed event meanwhile.
 export async function claimUnprocessedEventsAcrossWorkspaces(
@@ -30,6 +31,7 @@ export async function claimUnprocessedEventsAcrossWorkspaces(
       and(
         isNull(event.processedAt),
         lt(event.dispatchAttempts, MAX_DISPATCH_ATTEMPTS),
+        or(isNull(event.deferredUntil), lte(event.deferredUntil, sql`now()`)),
       ),
     )
     .orderBy(asc(event.seq))
@@ -90,6 +92,38 @@ export async function recordDispatchFailure(
     )
     .returning({ attempts: event.dispatchAttempts });
   return single(rows, `unprocessed event ${eventId}`);
+}
+
+// In the claiming transaction, after the event's dispatch was rolled back
+// because the workspace reached its daily spend cap (§15.5): not a failed
+// attempt. The event isn't claimed again until the next 00:00 UTC.
+export async function deferDispatchToNextUtcDay(
+  tx: Tx,
+  workspaceId: string,
+  eventId: string,
+  error: string,
+): Promise<{ deferredUntil: Date }> {
+  const rows = await tx
+    .update(event)
+    .set({
+      dispatchError: error,
+      // Add the day before converting back, so the session time zone's
+      // daylight saving can't shift it off 00:00 UTC.
+      deferredUntil: sql`(date_trunc('day', now() at time zone 'utc') + interval '1 day') at time zone 'utc'`,
+    })
+    .where(
+      and(
+        eq(event.id, eventId),
+        eq(event.workspaceId, workspaceId),
+        isNull(event.processedAt),
+      ),
+    )
+    .returning({ deferredUntil: event.deferredUntil });
+  const { deferredUntil } = single(rows, `unprocessed event ${eventId}`);
+  if (deferredUntil === null) {
+    throw new Error(`Event ${eventId} was not deferred`);
+  }
+  return { deferredUntil };
 }
 
 // Runs pg-boss statements in `tx`, for `boss.send(…, { db: jobQueueDb(tx) })`:

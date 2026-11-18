@@ -29,8 +29,8 @@ import { configVersion, memberRef, workspace } from "./workspace";
 const seq = () =>
   bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity();
 
-// Append-only, except the coordinator's fields: processed_at, set once, and
-// the dispatch failure record.
+// Append-only, except the coordinator's fields: processed_at, set once, the
+// dispatch failure record and the spend-cap deferral.
 export const event = pgTable(
   "event",
   {
@@ -49,6 +49,10 @@ export const event = pgTable(
     // claiming the event after MAX_DISPATCH_ATTEMPTS.
     dispatchAttempts: integer("dispatch_attempts").notNull().default(0),
     dispatchError: text("dispatch_error"),
+    // Set when the workspace's daily spend cap stopped the dispatch: the
+    // coordinator doesn't claim the event again until then, the next 00:00
+    // UTC (§15.5).
+    deferredUntil: timestamp("deferred_until", { withTimezone: true }),
   },
   (t) => [
     unique("event_workspace_id_id_key").on(t.workspaceId, t.id),

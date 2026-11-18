@@ -1,5 +1,5 @@
 import type { WorkspaceConfig } from "@shortlist/schemas";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { validConfig } from "../../schemas/tests/config.fixture";
 import {
   createMembership,
@@ -61,11 +61,12 @@ export function saveTestConfig(t: TestWorkspace): Promise<ActiveConfig> {
 }
 
 // No access function creates deals yet (Intake, milestone 2), so tests
-// insert one directly.
+// insert one directly. Its company has no domain, so a workspace can hold
+// several test deals.
 export async function createTestDeal(workspaceId: string): Promise<string> {
   const companies = await db()
     .insert(company)
-    .values({ workspaceId, name: "Acme", domainNormalized: "acme.test" })
+    .values({ workspaceId, name: "Acme", domainNormalized: null })
     .returning({ id: company.id });
   const deals = await db()
     .insert(deal)
@@ -136,4 +137,18 @@ export async function recordTestSpend(
       costMicros,
       ...(at === undefined ? {} : { createdAt: at }),
     });
+}
+
+// Moves the workspace a UTC day ahead without touching the DB clock: its
+// recorded spend and its events' spend-cap deferrals shift a day back, so
+// yesterday's spend no longer counts and deferred events are due again.
+export async function rollTestDayOver(workspaceId: string): Promise<void> {
+  await db()
+    .update(runStep)
+    .set({ createdAt: sql`${runStep.createdAt} - interval '1 day'` })
+    .where(eq(runStep.workspaceId, workspaceId));
+  await db()
+    .update(event)
+    .set({ deferredUntil: sql`${event.deferredUntil} - interval '1 day'` })
+    .where(eq(event.workspaceId, workspaceId));
 }

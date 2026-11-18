@@ -57,10 +57,13 @@ let ticking: Promise<void> = Promise.resolve();
 
 async function tick(): Promise<void> {
   try {
-    const { events, runs, failed } = await dispatchEvents(boss, registry);
+    const { events, runs, failed, deferred } = await dispatchEvents(
+      boss,
+      registry,
+    );
     if (events > 0) {
       console.log(
-        `Dispatched ${String(events)} events into ${String(runs)} runs (${String(failed)} events failed)`,
+        `Dispatched ${String(events)} events into ${String(runs)} runs (${String(failed)} events failed, ${String(deferred)} deferred by the spend cap)`,
       );
     }
   } catch (error) {

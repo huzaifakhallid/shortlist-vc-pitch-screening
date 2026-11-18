@@ -1,0 +1,1 @@
+ALTER TABLE "event" ADD COLUMN "deferred_until" timestamp with time zone;

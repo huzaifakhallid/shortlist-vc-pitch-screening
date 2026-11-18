@@ -43,6 +43,13 @@
       "when": 1794887680160,
       "tag": "0005_company_domain_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794978693689,
+      "tag": "0006_dispatch_deferral",
+      "breakpoints": true
     }
   ]
 }

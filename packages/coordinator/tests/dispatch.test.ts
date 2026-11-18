@@ -18,6 +18,7 @@ import {
   getTestEventRow,
   listTestRuns,
   recordTestSpend,
+  rollTestDayOver,
   saveTestConfig,
   type TestWorkspace,
 } from "../../db/tests/helpers";
@@ -25,6 +26,7 @@ import { dispatchEvents } from "../dispatch";
 import {
   AGENT_RUN_DEAD_LETTER_QUEUE,
   AGENT_RUN_QUEUE,
+  agentRunJobSchema,
   createAgentRunQueue,
 } from "../queue";
 import { listener } from "./agents";
@@ -62,7 +64,17 @@ const registry = [
   listener("pipeline", ["deal.received"]),
 ];
 
-const nothing = { events: 0, runs: 0, failed: 0 };
+// A workspace with a $0.001 cap that has spent it today.
+async function overCap(): Promise<TestWorkspace> {
+  const t = await createTestWorkspace("kestrel");
+  const config = configFor(t.partner.id);
+  config.dailySpendCapMicros = 1_000;
+  const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
+  await recordTestSpend(t.workspace.id, saved.id, 1_000);
+  return t;
+}
+
+const nothing = { events: 0, runs: 0, failed: 0, deferred: 0 };
 
 describe("dispatchEvents", () => {
   it("creates a run and its job per enabled listening agent", async () => {
@@ -74,6 +86,7 @@ describe("dispatchEvents", () => {
       events: 1,
       runs: 2,
       failed: 0,
+      deferred: 0,
     });
 
     const runs = await listTestRuns(t.workspace.id);
@@ -109,6 +122,7 @@ describe("dispatchEvents", () => {
       events: 1,
       runs: 1,
       failed: 0,
+      deferred: 0,
     });
     expect((await listTestRuns(t.workspace.id)).map((r) => r.agent)).toEqual([
       "screening",
@@ -135,6 +149,7 @@ describe("dispatchEvents", () => {
       events: 1,
       runs: 0,
       failed: 0,
+      deferred: 0,
     });
     expect(await listTestRuns(t.workspace.id)).toEqual([]);
   });
@@ -162,6 +177,7 @@ describe("dispatchEvents", () => {
       events: 2,
       runs: 2,
       failed: 1,
+      deferred: 0,
     });
     expect(await listTestRuns(t.workspace.id)).toHaveLength(2);
     expect(await getTestEventRow(good.id)).toMatchObject({
@@ -184,6 +200,7 @@ describe("dispatchEvents", () => {
         events: 1,
         runs: 0,
         failed: 1,
+        deferred: 0,
       });
     }
     expect(await dispatchEvents(boss, registry)).toEqual(nothing);
@@ -205,6 +222,7 @@ describe("dispatchEvents", () => {
         events: 1,
         runs: 0,
         failed: 1,
+        deferred: 0,
       });
     } finally {
       await createAgentRunQueue(boss);
@@ -216,31 +234,125 @@ describe("dispatchEvents", () => {
       events: 1,
       runs: 2,
       failed: 0,
+      deferred: 0,
     });
   });
 
-  it("queues no run once the workspace reached its daily spend cap (§15.5)", async () => {
-    const t = await createTestWorkspace("kestrel");
-    const config = configFor(t.partner.id);
-    config.dailySpendCapMicros = 1_000;
-    const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
-    await recordTestSpend(t.workspace.id, saved.id, 1_000);
+  it("defers an event over the daily spend cap to the next UTC day, without counting an attempt (§15.5)", async () => {
+    const t = await overCap();
     const event = await dealReceived(t);
 
     expect(await dispatchEvents(boss, registry)).toEqual({
       events: 1,
       runs: 0,
-      failed: 1,
+      failed: 0,
+      deferred: 1,
     });
     // Only the run that recorded the spend.
     expect((await listTestRuns(t.workspace.id)).map((r) => r.agent)).toEqual([
       "intake",
     ]);
     expect(await boss.findJobs(AGENT_RUN_QUEUE)).toEqual([]);
-    expect(await getTestEventRow(event.id)).toMatchObject({
+    const row = await getTestEventRow(event.id);
+    expect(row).toMatchObject({
       processedAt: null,
-      dispatchAttempts: 1,
+      dispatchAttempts: 0,
       dispatchError: `Workspace ${t.workspace.id} reached its daily AI spend cap: 1000 of 1000 micro-dollars spent today (UTC)`,
+    });
+    // A UTC midnight after the event. The deferral's now() is later than
+    // createdAt and may fall on the next UTC day, so allow up to two days.
+    const deferredUntil = row.deferredUntil?.getTime() ?? Number.NaN;
+    expect(deferredUntil % 86_400_000).toBe(0);
+    expect(deferredUntil).toBeGreaterThan(row.createdAt.getTime());
+    expect(deferredUntil - row.createdAt.getTime()).toBeLessThanOrEqual(
+      2 * 86_400_000,
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `ALERT spend cap reached: workspace ${t.workspace.id}`,
+      ),
+    );
+
+    // Not claimed again before midnight, however many ticks run.
+    for (let i = 0; i < MAX_DISPATCH_ATTEMPTS + 1; i += 1) {
+      expect(await dispatchEvents(boss, registry)).toEqual(nothing);
+    }
+    expect((await getTestEventRow(event.id)).dispatchAttempts).toBe(0);
+  });
+
+  it("keeps an event's earlier failed attempts when the cap defers it", async () => {
+    // No active config yet: the first dispatch fails.
+    const t = await createTestWorkspace("kestrel");
+    const event = await dealReceived(t);
+    expect(await dispatchEvents(boss, registry)).toMatchObject({ failed: 1 });
+
+    const config = configFor(t.partner.id);
+    config.dailySpendCapMicros = 1_000;
+    const saved = await saveConfigVersion(t.workspace.id, config, t.partner.id);
+    await recordTestSpend(t.workspace.id, saved.id, 1_000);
+    expect(await dispatchEvents(boss, registry)).toMatchObject({ deferred: 1 });
+    expect((await getTestEventRow(event.id)).dispatchAttempts).toBe(1);
+  });
+
+  it("dispatches deferred events in order once the UTC day rolls over", async () => {
+    const t = await overCap();
+    const events = [
+      await dealReceived(t),
+      await dealReceived(t),
+      await dealReceived(t),
+    ];
+    expect(await dispatchEvents(boss, registry)).toEqual({
+      events: 3,
+      runs: 0,
+      failed: 0,
+      deferred: 3,
+    });
+
+    await rollTestDayOver(t.workspace.id);
+    const send = vi.spyOn(boss, "send");
+    const screeningOnly = [listener("screening", ["deal.received"])];
+    expect(await dispatchEvents(boss, screeningOnly)).toEqual({
+      events: 3,
+      runs: 3,
+      failed: 0,
+      deferred: 0,
+    });
+    const runs = await listTestRuns(t.workspace.id);
+    const triggerOf = new Map(runs.map((r) => [r.id, r.triggerEventId]));
+    const sentFor = send.mock.calls.map(([, data]) =>
+      triggerOf.get(agentRunJobSchema.parse(data).runId),
+    );
+    expect(sentFor).toEqual(events.map((e) => e.id));
+    for (const e of events) {
+      expect((await getTestEventRow(e.id)).processedAt).toBeInstanceOf(Date);
+    }
+  });
+
+  it("defers only the over-cap workspace's events", async () => {
+    const capped = await overCap();
+    const deferredEvent = await dealReceived(capped);
+    const t = await createTestWorkspace("other");
+    await saveTestConfig(t);
+    const event = await dealReceived(t);
+
+    expect(await dispatchEvents(boss, registry)).toEqual({
+      events: 2,
+      runs: 2,
+      failed: 0,
+      deferred: 1,
+    });
+    expect((await getTestEventRow(event.id)).processedAt).toBeInstanceOf(Date);
+    expect(await getTestEventRow(deferredEvent.id)).toMatchObject({
+      processedAt: null,
+      dispatchAttempts: 0,
+    });
+    // A later event in the other workspace isn't held up by the deferred one.
+    await dealReceived(t);
+    expect(await dispatchEvents(boss, registry)).toEqual({
+      events: 1,
+      runs: 2,
+      failed: 0,
+      deferred: 0,
     });
   });
 
@@ -259,6 +371,7 @@ describe("dispatchEvents", () => {
       events: 1,
       runs: 2,
       failed: 0,
+      deferred: 0,
     });
   });
 
@@ -274,6 +387,7 @@ describe("dispatchEvents", () => {
       events: 1,
       runs: 0,
       failed: 0,
+      deferred: 0,
     });
     expect((await getTestEventRow(event.id)).processedAt).toBeInstanceOf(Date);
   });

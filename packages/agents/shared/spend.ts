@@ -2,8 +2,7 @@
 // a run, and the worker before each model call.
 
 // The workspace has spent its cap for the current UTC day. Fails the run (not
-// retried), or the event's dispatch (retried like any dispatch failure, then
-// no longer claimed; pausing instead is a progress.md follow-up).
+// retried), or defers the event's dispatch to the next UTC day.
 export class SpendCapReachedError extends Error {
   constructor(message: string) {
     super(message);

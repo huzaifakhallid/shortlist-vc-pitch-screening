@@ -1,6 +1,7 @@
 import {
   assertUnderSpendCap,
   sanitiseError,
+  SpendCapReachedError,
   type AgentRegistry,
 } from "@shortlist/agents-shared";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@shortlist/db";
 import {
   claimUnprocessedEventsAcrossWorkspaces,
+  deferDispatchToNextUtcDay,
   jobQueueDb,
   markEventProcessed,
   recordDispatchFailure,
@@ -29,15 +31,18 @@ const BATCH_SIZE = 100;
 // jobs and its processed mark commit together. An event that fails rolls
 // back alone and has the failure recorded on its row, so it can't block the
 // rest of the batch; after MAX_DISPATCH_ATTEMPTS it is no longer claimed.
+// An event stopped by the workspace's daily spend cap is deferred instead: not
+// a failed attempt, claimed again from the next 00:00 UTC (§15.5).
 export async function dispatchEvents(
   boss: PgBoss,
   registry: AgentRegistry,
-): Promise<{ events: number; runs: number; failed: number }> {
+): Promise<{ events: number; runs: number; failed: number; deferred: number }> {
   return withTransaction(async (tx) => {
     const events = await claimUnprocessedEventsAcrossWorkspaces(tx, BATCH_SIZE);
     const configs = new Map<string, ActiveConfig>();
     let runs = 0;
     let failed = 0;
+    let deferred = 0;
     for (const event of events) {
       try {
         runs += await tx.transaction(async (sp) => {
@@ -58,6 +63,20 @@ export async function dispatchEvents(
         });
       } catch (error) {
         const message = sanitiseError(error);
+        if (error instanceof SpendCapReachedError) {
+          const { deferredUntil } = await deferDispatchToNextUtcDay(
+            tx,
+            event.workspaceId,
+            event.id,
+            message,
+          );
+          // The admin alert (§19) until Slack and email alerts exist.
+          console.error(
+            `ALERT spend cap reached: workspace ${event.workspaceId}, event ${event.id} (${event.type}) deferred until ${deferredUntil.toISOString()}`,
+          );
+          deferred += 1;
+          continue;
+        }
         const { attempts } = await recordDispatchFailure(
           tx,
           event.workspaceId,
@@ -70,13 +89,13 @@ export async function dispatchEvents(
         failed += 1;
       }
     }
-    return { events: events.length, runs, failed };
+    return { events: events.length, runs, failed, deferred };
   });
 }
 
 // Creates a run per enabled listening agent and enqueues each new run's job.
 // A workspace that has reached its daily spend cap (§15.5) gets no runs: the
-// SpendCapReachedError fails the event's dispatch, which records why on it.
+// SpendCapReachedError rolls back the event's dispatch, which is deferred.
 async function dispatchEvent(
   sp: Tx,
   boss: PgBoss,

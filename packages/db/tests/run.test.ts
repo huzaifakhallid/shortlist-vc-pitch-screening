@@ -100,6 +100,25 @@ describe("agent runs", () => {
     );
   });
 
+  it("refuses to record a received deal on a run that has one", async () => {
+    const { workspaceId, dealId, run } = await queuedRun();
+    await startRun(workspaceId, run.id, started);
+    const other = await createTestDeal(workspaceId);
+
+    await expect(
+      withTransaction((tx) =>
+        finishRun(tx, workspaceId, run.id, {
+          status: "SUCCEEDED",
+          output: {},
+          ...usage,
+          receivedDealId: other,
+        }),
+      ),
+    ).rejects.toThrow(
+      `Cannot record deal ${other} on run ${run.id}: it already has deal ${dealId}`,
+    );
+  });
+
   it("fails, but never succeeds, a run that never started", async () => {
     const { workspaceId, run } = await queuedRun();
     await expect(

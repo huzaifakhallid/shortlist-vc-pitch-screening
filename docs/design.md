@@ -217,10 +217,13 @@ Every agent is defined by the same contract:
 - **Email handling:** the agent extracts company name, website, founder contact and stated round from the email body (structured output) and takes the PDF attachment as the deck. A link-only deck (e.g., an access-gated hosted deck) is not guessed at: the deal stays in `RECEIVED` with no deck on its submission, and the dashboard shows "Needs deck", derived from that missing deck.
 - **Duplicates:** same normalized company domain, or same founder email within 90 days, links the pitch to the existing deal as a resubmission. Plain code (`packages/agents/intake/steps/dedupe.ts`), read conservatively so unrelated pitches are never merged:
   - *Company domain:* from the stated website only (never from the founder's email domain). Lowercased host (IDN as punycode) without scheme, port, path, query, trailing dot or one leading `www.`; other subdomains are kept (`app.acme.com` ≠ `acme.com`, no public-suffix merging). A website that isn't an http(s) address with a dotted host name, carries credentials, or is an IP address, is rejected. A website on a shared host (a fixed list: link, profile, document and social sites such as `linktr.ee`, `github.com`, `docsend.com`, `notion.so`, and their subdomains) gives "no company domain, shared host", recorded on the decision like "no company domain, no website". A normalized host is not safe to fetch (it may resolve to a private address).
-  - *Domain rule:* when the pitch has a company domain, a match links to that company's latest deal, with no time window, if the founder email is on the company domain (exactly; a subdomain doesn't count) or on an earlier submission of that deal. Otherwise it is a **possible duplicate**: someone could be claiming another founder's company, so a partner confirms the link before it is made. No domain match means a new deal: the email rule never overrides a stated domain.
+  - *Domain rule:* when the pitch has a company domain, a match links to that company's latest deal, with no time window, if the founder email is on the company domain (exactly; a subdomain doesn't count) or on an earlier submission of that deal. Otherwise it is a **possible duplicate**: someone could be claiming another founder's company, so a partner confirms the link before it is made. Until then the pitch is its own deal in `NEEDS_REVIEW`, with `deal.possible_duplicate_of_deal_id` pointing at the suspected original, under a company without a domain (the original keeps it), and Intake emits `deal.needs_review` instead of `deal.received`: it is neither screened nor acknowledged until a partner decides. A repeat claim from the same founder email (the same domain again, or no website within 90 days) joins that held deal instead of making another (`matchedBy: "open_claim"` or `"email"`). No domain match means a new deal: the email rule never overrides a stated domain.
   - *Email rule:* only when the pitch has no company domain (no website or a shared host). The email is trimmed and lowercased (ASCII only, local part an RFC 5322 dot-atom; plus tags and dots kept). It links to the deal of the workspace's latest submission from that address when that submission is at most 90 days old (inclusive), measured against the database clock.
-  - *The fund's own addresses:* a founder email on the workspace's intake domain or a member's email domain (or a subdomain of one) fails the run visibly: it's a forwarding or setup mistake, never a founder.
-  - *Founder contact:* a resubmission adds a submission; it never changes the deal's founder contact. Founder Comms writes to the founder email on the deal's first submission.
+  - *The fund's own addresses:* a founder email that is a member's exact address, or is on the workspace's intake domain or a member's email domain (or a subdomain of one), fails the run visibly: it's a forwarding or setup mistake, never a founder. Public mailbox domains (`PUBLIC_MAILBOX_DOMAINS` in `dedupe.ts`, e.g. `gmail.com`) never count as the fund's domains, so a member on gmail doesn't exclude founders on gmail; that member's exact address is still refused. The public form runs the same check on submit (`isFundEmail`) and refuses with a 400.
+  - *Resubmission events (form channel):* nothing on the form proves who sent it, so every form resubmission, by domain or email, is unverified. It is attached to the existing deal as a submission and Intake emits `deal.needs_review`, not `deal.received`: Screening never re-runs automatically from a form resubmission. A resubmission onto a held deal (a possible duplicate waiting for a partner) emits nothing; the partner's confirm action emits `deal.received`. Only a new deal emits `deal.received`.
+  - *Founder contact:* a resubmission adds a submission; it never changes the deal's founder contact. Founder Comms writes to the founder email on the deal's first submission (`getFounderContact`, by `submission.seq`).
+  - *Race safety:* the dedupe query, the decision and the inserts run in the transaction that finishes the Intake run (`receivePitch`, §11.1), under a per-workspace advisory lock, with `now` read from the database in that transaction. Under that lock `receivePitch` is the only writer of companies with a domain, so a unique violation on the domain is a bug: it fails the run with a specific message.
+- **Synthetic workspaces** take no pitches: `receivePitch` refuses them for every channel (§14.4, §15.5).
   - The dedupe query (`findDuplicateCandidates`) returns the facts (latest deal per domain and whether the founder email is on one of its submissions, latest submission per email whatever its age); the rules above decide. Stored `company.domain_normalized` (null without a company domain) and `submission.founder_email` hold these normalized values.
 - **When Intake is off:** deals enter through manual upload or the API.
 
@@ -370,13 +373,13 @@ This is deliberately simpler than free-form "agents talking to agents": the orde
 | `deal.received` | Intake, API, manual upload | Screening, Research (if Screening off), Comms (ack), Pipeline |
 | `deal.screened` | Screening | Research, Memo, Pipeline |
 | `deal.out_of_mandate` | Screening | Comms (decline draft), Pipeline |
-| `deal.needs_review` | Screening | Pipeline |
+| `deal.needs_review` | Screening, Intake (possible duplicate or form resubmission, §7.1) | Pipeline |
 | `research.completed` | Research | Memo |
 | `memo.completed` | Memo | Pipeline |
 | `deal.stage_changed` | People (dashboard or Slack) | Comms, Pipeline, Diligence (when → Diligence) |
 | `document.uploaded` | Founder upload link | Diligence |
 
-`email.received` and `form.submitted` happen before a deal exists, so their `deal_id` is null. Intake creates or links the deal, then emits `deal.received`. A `form.submitted` payload carries the pitch: the form fields (company name, website or null, one-liner, round size in USD or null, founder name and email, as entered) and the verified deck (`objectKey`, `etag`, `sizeBytes`). Intake creates the company, deal and submission from it.
+`email.received` and `form.submitted` happen before a deal exists, so their `deal_id` is null. Intake creates or links the deal, then emits `deal.received` for a new deal, `deal.needs_review` for a possible duplicate or a form resubmission (with the existing deal), and nothing for a resubmission onto a held possible duplicate (§7.1). A `form.submitted` payload carries the pitch: the form fields (company name, website or null, one-liner, round size in USD or null, founder name and email, as entered) and the verified deck (`objectKey`, `etag`, `sizeBytes`). Intake creates the company, deal and submission from it.
 
 ### 8.3 Dependency rules (checked when settings are saved)
 
@@ -534,7 +537,7 @@ type AgentDefinition<In, Out> = {
 
 Each agent is one module with one responsibility. The coordinator knows nothing about what agents do; it only maps events to enabled agents.
 
-An emitted event's deal is the run's deal, never a value from agent or model output. Intake is the one exception, because its run starts before the deal exists: it gets a narrow path that creates the deal in the same transaction as `finishRun`, and its `deal.received` takes the deal id from that insert (milestone 2).
+An emitted event's deal is the run's deal, never a value from agent or model output. Intake is the one exception, because its run starts before the deal exists: it gets a narrow path that creates the deal in the same transaction as `finishRun`, and its `deal.received` takes the deal id from that insert (milestone 2). The definition's `receivesPitch` gives the worker the pitch from the output, the dedupe decision and the events for its match; the worker calls `receivePitch` and records the deal on the run. `receivePitch` records the dedupe decision (the match, with `matchedBy` and whether the deal is held) as the run's `dedupe` step in the same transaction, so a committed deal always has the decision that made it; a rolled-back pitch leaves none.
 
 ### 11.2 Runs and steps
 
@@ -612,8 +615,8 @@ erDiagram
 | `config_version` | workspace_id, version, config (jsonb, Zod-validated), is_active, created_by |
 | `integration` | workspace_id, kind (`slack`/`hubspot`/`airtable`/`sheets`/`postmark_domain`), credentials (encrypted), status, last_error |
 | `company` | workspace_id, name, domain_normalized (nullable: no website or a shared host, §7.1; unique per workspace, NULLs distinct) |
-| `deal` | workspace_id, company_id, stage, profile (jsonb), total_score, integrity_flag, assigned_partner_id |
-| `submission` | deal_id, channel, form_data, founder_email (normalized, §7.1), deck_object_key, deck_sha256, raw_email_key |
+| `deal` | workspace_id, company_id, stage, profile (jsonb), total_score, integrity_flag, assigned_partner_id, possible_duplicate_of_deal_id (§7.1) |
+| `submission` | seq, deal_id, channel, form_data, founder_email (normalized, §7.1), deck_object_key, deck_etag (set exactly with the key, §15.3), deck_sha256, raw_email_key |
 | `document` | deal_id, kind (`deck`/`financials`/`cap_table`/`other`), object_key, uploaded_by |
 | `event` | workspace_id, deal_id (nullable: §8.2), type, payload, created_at, processed_at, dispatch_attempts, dispatch_error, deferred_until |
 | `agent_run` | workspace_id, deal_id (nullable: an Intake run starts before its deal exists), agent, trigger_event_id, config_version_id, prompt_version, model, input_hash, status, output (jsonb), tokens_in, tokens_out, cost_micros, latency_ms, error; unique (agent, trigger_event_id) |

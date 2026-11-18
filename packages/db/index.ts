@@ -11,9 +11,16 @@ export {
 } from "./access/config";
 export {
   findDuplicateCandidates,
+  getFounderContact,
   type DuplicateCandidates,
 } from "./access/deal";
 export { getEvent, insertEvent, type StoredEvent } from "./access/event";
+export {
+  receivePitch,
+  type IntakeFacts,
+  type ReceivedDeal,
+  type ReceivedPitch,
+} from "./access/intake";
 export { listConnectedKinds } from "./access/integration";
 export {
   createMembership,
@@ -51,6 +58,7 @@ export {
 export { createUser, getUserByEmail, type User } from "./access/user";
 export {
   createWorkspace,
+  getFundEmails,
   getWorkspace,
   getWorkspaceBySlug,
   type Workspace,

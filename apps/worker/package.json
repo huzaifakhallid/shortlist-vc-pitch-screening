@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shortlist/agents-intake": "workspace:*",
     "@shortlist/agents-shared": "workspace:*",
     "@shortlist/coordinator": "workspace:*",
     "@shortlist/db": "workspace:*",

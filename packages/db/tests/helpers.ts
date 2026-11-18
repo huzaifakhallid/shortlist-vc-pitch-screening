@@ -12,7 +12,7 @@ import {
   type Workspace,
 } from "../index";
 import { db, single } from "../client";
-import { agentRun, company, deal, event, runStep } from "../schema";
+import { agentRun, company, deal, event, runStep, submission } from "../schema";
 
 export type TestWorkspace = {
   workspace: Workspace;
@@ -60,9 +60,8 @@ export function saveTestConfig(t: TestWorkspace): Promise<ActiveConfig> {
   );
 }
 
-// No access function creates deals yet (Intake, milestone 2), so tests
-// insert one directly. Its company has no domain, so a workspace can hold
-// several test deals.
+// A deal without going through Intake's narrow path (receivePitch). Its
+// company has no domain, so a workspace can hold several test deals.
 export async function createTestDeal(workspaceId: string): Promise<string> {
   const companies = await db()
     .insert(company)
@@ -151,4 +150,37 @@ export async function rollTestDayOver(workspaceId: string): Promise<void> {
     .update(event)
     .set({ deferredUntil: sql`${event.deferredUntil} - interval '1 day'` })
     .where(eq(event.workspaceId, workspaceId));
+}
+
+// No access function lists deals or submissions yet (dashboard, milestone 3).
+export async function listTestDeals(workspaceId: string) {
+  return db()
+    .select({
+      id: deal.id,
+      stage: deal.stage,
+      possibleDuplicateOfDealId: deal.possibleDuplicateOfDealId,
+      companyName: company.name,
+      domainNormalized: company.domainNormalized,
+    })
+    .from(deal)
+    .innerJoin(company, eq(company.id, deal.companyId))
+    .where(eq(deal.workspaceId, workspaceId))
+    .orderBy(asc(deal.createdAt), asc(deal.id));
+}
+
+export async function listTestSubmissions(workspaceId: string) {
+  return db()
+    .select()
+    .from(submission)
+    .where(eq(submission.workspaceId, workspaceId))
+    .orderBy(asc(submission.seq));
+}
+
+// A workspace's events in insertion order, processed or not.
+export async function listTestEvents(workspaceId: string) {
+  return db()
+    .select({ type: event.type, dealId: event.dealId })
+    .from(event)
+    .where(eq(event.workspaceId, workspaceId))
+    .orderBy(asc(event.seq));
 }

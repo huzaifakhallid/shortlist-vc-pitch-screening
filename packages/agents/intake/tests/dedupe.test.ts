@@ -7,6 +7,8 @@ import {
 import {
   companyDomain,
   decideDuplicate,
+  FUND_EMAIL_ERROR,
+  isFundEmail,
   normalizeDomain,
   normalizeEmail,
   SHARED_HOSTS,
@@ -186,12 +188,27 @@ describe("decideDuplicate", () => {
     return new Date(now.getTime() - days * day);
   }
 
-  function domainMatch(founderEmailOnDeal: boolean) {
-    return { companyId: company, dealId: domainDeal, founderEmailOnDeal };
+  const claimDeal = "44444444-4444-4444-8444-444444444444";
+  const fund = {
+    domains: new Set(["kestrel.vc", "in.shortlist.dev"]),
+    addresses: new Set(["partner@kestrel.vc"]),
+  };
+
+  function domainMatch(
+    founderEmailOnDeal: boolean,
+    openClaimDealId: string | null = null,
+  ) {
+    return {
+      companyId: company,
+      dealId: domainDeal,
+      founderEmailOnDeal,
+      held: false,
+      openClaimDealId,
+    };
   }
 
-  function emailMatch(submittedAt: Date) {
-    return { dealId: emailDeal, submittedAt };
+  function emailMatch(submittedAt: Date, held = false) {
+    return { dealId: emailDeal, submittedAt, held };
   }
 
   function decide(
@@ -202,7 +219,7 @@ describe("decideDuplicate", () => {
     const decision = decideDuplicate({
       companyDomain: domain,
       founderEmail: "ana@acme.com",
-      excludedEmailDomains: new Set(["kestrel.vc", "in.shortlist.dev"]),
+      fundEmails: fund,
       candidates,
       now,
       ...overrides,
@@ -230,6 +247,7 @@ describe("decideDuplicate", () => {
         kind: "resubmission",
         dealId: domainDeal,
         matchedBy: "domain",
+        held: false,
       });
     });
 
@@ -244,6 +262,7 @@ describe("decideDuplicate", () => {
         kind: "resubmission",
         dealId: domainDeal,
         matchedBy: "domain",
+        held: false,
       });
     });
 
@@ -267,6 +286,21 @@ describe("decideDuplicate", () => {
       ).toEqual({ kind: "possible_duplicate", dealId: domainDeal });
     });
 
+    it("joins this founder email's open possible duplicate instead of making another", () => {
+      expect(
+        decide(
+          acme,
+          { byDomain: domainMatch(false, claimDeal), byEmail: null },
+          { founderEmail: "mallory@gmail.com" },
+        ),
+      ).toEqual({
+        kind: "resubmission",
+        dealId: claimDeal,
+        matchedBy: "open_claim",
+        held: true,
+      });
+    });
+
     it("prefers the domain match over an email match", () => {
       expect(
         decide(acme, {
@@ -277,6 +311,7 @@ describe("decideDuplicate", () => {
         kind: "resubmission",
         dealId: domainDeal,
         matchedBy: "domain",
+        held: false,
       });
     });
 
@@ -301,6 +336,21 @@ describe("decideDuplicate", () => {
         kind: "resubmission",
         dealId: emailDeal,
         matchedBy: "email",
+        held: false,
+      });
+    });
+
+    it("marks an email match on a held deal as held", () => {
+      expect(
+        decide(noWebsite, {
+          byDomain: null,
+          byEmail: emailMatch(daysAgo(1), true),
+        }),
+      ).toEqual({
+        kind: "resubmission",
+        dealId: emailDeal,
+        matchedBy: "email",
+        held: true,
       });
     });
 
@@ -323,6 +373,7 @@ describe("decideDuplicate", () => {
         kind: "resubmission",
         dealId: emailDeal,
         matchedBy: "email",
+        held: false,
       });
     });
 
@@ -331,7 +382,7 @@ describe("decideDuplicate", () => {
         decideDuplicate({
           companyDomain: sharedHost,
           founderEmail: "ana@acme.com",
-          excludedEmailDomains: new Set(),
+          fundEmails: { domains: new Set(), addresses: new Set() },
           candidates: { byDomain: domainMatch(true), byEmail: null },
           now,
         }),
@@ -344,17 +395,44 @@ describe("decideDuplicate", () => {
     "pitches+kestrel@in.shortlist.dev",
     "a@eu.kestrel.vc",
   ])(
-    "fails for a founder email on the fund's own domains (%s)",
+    "fails for a founder email that belongs to the fund (%s)",
     (founderEmail) => {
       expect(() =>
         decideDuplicate({
           companyDomain: acme,
           founderEmail,
-          excludedEmailDomains: new Set(["kestrel.vc", "in.shortlist.dev"]),
+          fundEmails: fund,
           candidates: { byDomain: null, byEmail: null },
           now,
         }),
-      ).toThrow(/^Founder email is on one of the fund's own domains$/);
+      ).toThrow(new RegExp(`^${FUND_EMAIL_ERROR}$`));
     },
   );
+});
+
+describe("isFundEmail", () => {
+  // A member on gmail.com, one on the fund's corporate domain.
+  const fund = {
+    domains: new Set(["in.shortlist.dev", "gmail.com", "kestrel.vc"]),
+    addresses: new Set(["angel.partner@gmail.com", "partner@kestrel.vc"]),
+  };
+
+  it("allows a founder on a member's public mailbox domain", () => {
+    expect(isFundEmail("founder@gmail.com", fund)).toBe(false);
+  });
+
+  it("refuses a member's own address, on a public mailbox domain too", () => {
+    expect(isFundEmail("angel.partner@gmail.com", fund)).toBe(true);
+    expect(isFundEmail("partner@kestrel.vc", fund)).toBe(true);
+  });
+
+  it("refuses the corporate member domain, its subdomains and the intake domain", () => {
+    expect(isFundEmail("ops@kestrel.vc", fund)).toBe(true);
+    expect(isFundEmail("ops@eu.kestrel.vc", fund)).toBe(true);
+    expect(isFundEmail("pitches+k@in.shortlist.dev", fund)).toBe(true);
+  });
+
+  it("allows an unrelated domain", () => {
+    expect(isFundEmail("ana@acme.com", fund)).toBe(false);
+  });
 });

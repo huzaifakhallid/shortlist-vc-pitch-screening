@@ -21,6 +21,7 @@ vi.mock("@shortlist/db", async (importOriginal) => ({
   getPendingUpload: vi.fn(),
   deletePendingUpload: vi.fn(),
   submitPitchForm: vi.fn(),
+  getFundEmails: vi.fn(),
 }));
 vi.mock("@/lib/deck-storage", () => ({ deckStorage: vi.fn() }));
 vi.mock("@/lib/env", () => ({
@@ -120,6 +121,10 @@ beforeEach(() => {
     expired: false,
   });
   storage.verifyDeckUpload.mockResolvedValue('"etag-1"');
+  vi.mocked(db.getFundEmails).mockResolvedValue({
+    domains: new Set(["in.shortlist.dev", "harbor.example", "gmail.com"]),
+    addresses: new Set(["partner@harbor.example", "angel.partner@gmail.com"]),
+  });
 });
 
 describe("POST /api/pitch/[slug]/uploads", () => {
@@ -515,6 +520,37 @@ describe("POST /api/pitch/[slug]/submissions", () => {
       expect(await json(response)).toEqual({ error, reupload: false });
     }
     expect(db.getPendingUpload).not.toHaveBeenCalled();
+  });
+
+  it("refuses the fund's own addresses up front, but not a founder on a member's public mailbox domain", async () => {
+    for (const founderEmail of [
+      "Partner@Harbor.example",
+      "ops@harbor.example",
+      "angel.partner@gmail.com",
+    ]) {
+      const response = await submit(
+        post(submitBody({ form: { ...validPitchForm(), founderEmail } })),
+        ctx(),
+      );
+      expect(response.status, founderEmail).toBe(400);
+      expect(await json(response)).toEqual({
+        error:
+          "This email address belongs to the fund. Use the founder's own email.",
+        reupload: false,
+      });
+    }
+    expect(db.getFundEmails).toHaveBeenCalledWith(WORKSPACE_ID);
+    expect(db.getPendingUpload).not.toHaveBeenCalled();
+
+    const founder = await submit(
+      post(
+        submitBody({
+          form: { ...validPitchForm(), founderEmail: "omar@gmail.com" },
+        }),
+      ),
+      ctx(),
+    );
+    expect(founder.status).toBe(200);
   });
 
   it("keeps the upload when storage itself fails", async () => {

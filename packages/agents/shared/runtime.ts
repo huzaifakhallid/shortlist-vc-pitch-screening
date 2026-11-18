@@ -1,7 +1,8 @@
-import type { StoredEvent } from "@shortlist/db";
+import type { IntakeFacts, ReceivedPitch, StoredEvent } from "@shortlist/db";
 import type {
   AgentKey,
   EventType,
+  IntakeMatch,
   ShortlistEvent,
   WorkspaceConfig,
 } from "@shortlist/schemas";
@@ -105,6 +106,18 @@ export type AgentDefinition<In, Out> = {
   outputSchema: z.ZodType<Out>;
   // Written in the transaction that saves the output (§8.1).
   emits(output: Out): ShortlistEvent[];
+  // Intake only (§11.1): its run starts before its deal exists. The worker
+  // creates or links the deal from the output (receivePitch) in the
+  // transaction that finishes the run, and writes the events for the match
+  // that made, with that insert's deal id. emits(output) must return none.
+  receivesPitch?: IntakePath<Out>;
+};
+
+export type IntakePath<Out> = {
+  pitch(output: Out): ReceivedPitch;
+  // The dedupe rules, on facts read inside that transaction.
+  decide(output: Out, facts: IntakeFacts): IntakeMatch;
+  emits(match: IntakeMatch): ShortlistEvent[];
 };
 
 export type AnyAgentDefinition = AgentDefinition<unknown, unknown>;
@@ -127,6 +140,15 @@ export function agentRegistry(
     }
   }
   return agents;
+}
+
+// needs() found the deal without an input the agent requires. Names the
+// field, never its value.
+export class MissingInputError extends Error {
+  constructor(field: string) {
+    super(`Missing input: ${field}`);
+    this.name = "MissingInputError";
+  }
 }
 
 // A rate limit, 5xx or timeout from the model provider. The job runner

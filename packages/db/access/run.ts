@@ -1,5 +1,5 @@
 import type { AgentKey, RunStatus } from "@shortlist/schemas";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db, single, type Tx } from "../client";
 import { agentRun, event, runStep } from "../schema";
@@ -147,7 +147,14 @@ export async function startRun(
 }
 
 export type RunResult =
-  | { status: "SUCCEEDED"; output: unknown; latencyMs: number }
+  | {
+      status: "SUCCEEDED";
+      output: unknown;
+      latencyMs: number;
+      // Intake only (§11.1): the deal its narrow path created or linked, in
+      // this transaction. Set once, on a run without a deal.
+      receivedDealId?: string;
+    }
   // Null latency: the run never started and no attempt timed it (the
   // dead-letter handler).
   | { status: "FAILED"; error: string; latencyMs: number | null };
@@ -172,12 +179,17 @@ export async function finishRun(
     result.status === "SUCCEEDED"
       ? { output: result.output, error: null }
       : { output: null, error: result.error };
+  const received =
+    result.status === "SUCCEEDED" && result.receivedDealId !== undefined
+      ? result.receivedDealId
+      : null;
   const from: RunStatus[] =
     result.status === "SUCCEEDED" ? ["RUNNING"] : ["QUEUED", "RUNNING"];
   const rows = await tx
     .update(agentRun)
     .set({
       ...outcome,
+      ...(received === null ? {} : { dealId: received }),
       status: result.status,
       tokensIn: stepTotal(runStep.tokensIn),
       tokensOut: stepTotal(runStep.tokensOut),
@@ -190,11 +202,25 @@ export async function finishRun(
         eq(agentRun.id, runId),
         eq(agentRun.workspaceId, workspaceId),
         inArray(agentRun.status, from),
+        received === null ? undefined : isNull(agentRun.dealId),
       ),
     )
     .returning();
   const [run] = rows;
   if (run === undefined) {
+    if (received !== null) {
+      const [current] = await tx
+        .select({ dealId: agentRun.dealId })
+        .from(agentRun)
+        .where(
+          and(eq(agentRun.id, runId), eq(agentRun.workspaceId, workspaceId)),
+        );
+      if (current !== undefined && current.dealId !== null) {
+        throw new Error(
+          `Cannot record deal ${received} on run ${runId}: it already has deal ${current.dealId}`,
+        );
+      }
+    }
     throw await runUpdateRefused(workspaceId, runId, "finish");
   }
   return run;

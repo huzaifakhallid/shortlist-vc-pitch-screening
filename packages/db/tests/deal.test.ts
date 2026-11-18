@@ -21,10 +21,17 @@ async function insertDeal(
   workspaceId: string,
   companyId: string,
   createdAt: Date,
+  possibleDuplicateOfDealId: string | null = null,
 ): Promise<string> {
   const rows = await db()
     .insert(deal)
-    .values({ workspaceId, companyId, stage: "RECEIVED", createdAt })
+    .values({
+      workspaceId,
+      companyId,
+      stage: possibleDuplicateOfDealId === null ? "RECEIVED" : "NEEDS_REVIEW",
+      possibleDuplicateOfDealId,
+      createdAt,
+    })
     .returning({ id: deal.id });
   return single(rows, "deal").id;
 }
@@ -68,7 +75,13 @@ describe("findDuplicateCandidates", () => {
         founderEmail: "ana@acme.com",
       }),
     ).toEqual({
-      byDomain: { companyId, dealId: latest, founderEmailOnDeal: false },
+      byDomain: {
+        companyId,
+        dealId: latest,
+        founderEmailOnDeal: false,
+        held: false,
+        openClaimDealId: null,
+      },
       byEmail: null,
     });
   });
@@ -90,6 +103,8 @@ describe("findDuplicateCandidates", () => {
       companyId,
       dealId: latest,
       founderEmailOnDeal: true,
+      held: false,
+      openClaimDealId: null,
     });
     const bo = await findDuplicateCandidates(t.workspace.id, {
       domainNormalized: "acme.com",
@@ -99,6 +114,8 @@ describe("findDuplicateCandidates", () => {
       companyId,
       dealId: latest,
       founderEmailOnDeal: false,
+      held: false,
+      openClaimDealId: null,
     });
   });
 
@@ -160,7 +177,7 @@ describe("findDuplicateCandidates", () => {
       }),
     ).toEqual({
       byDomain: null,
-      byEmail: { dealId: first, submittedAt: recently },
+      byEmail: { dealId: first, submittedAt: recently, held: false },
     });
   });
 
@@ -181,9 +198,59 @@ describe("findDuplicateCandidates", () => {
         founderEmail: "ana@acme.com",
       }),
     ).toEqual({
-      byDomain: { companyId, dealId: byDomain, founderEmailOnDeal: false },
-      byEmail: { dealId: byEmail, submittedAt: recently },
+      byDomain: {
+        companyId,
+        dealId: byDomain,
+        founderEmailOnDeal: false,
+        held: false,
+        openClaimDealId: null,
+      },
+      byEmail: { dealId: byEmail, submittedAt: recently, held: false },
     });
+  });
+
+  it("finds this founder email's open possible duplicate of the matched deal, and marks held email matches", async () => {
+    const t = await createTestWorkspace("kestrel");
+    const original = await insertDeal(
+      t.workspace.id,
+      await insertCompany(t.workspace.id, "acme.com"),
+      longAgo,
+    );
+    const claim = await insertDeal(
+      t.workspace.id,
+      await insertCompany(t.workspace.id, null),
+      recently,
+      original,
+    );
+    await insertSubmission(t.workspace.id, claim, "x@evil.com", recently);
+    // Another founder's claim on the same deal.
+    const other = await insertDeal(
+      t.workspace.id,
+      await insertCompany(t.workspace.id, null),
+      recently,
+      original,
+    );
+    await insertSubmission(t.workspace.id, other, "y@evil.com", recently);
+
+    const x = await findDuplicateCandidates(t.workspace.id, {
+      domainNormalized: "acme.com",
+      founderEmail: "x@evil.com",
+    });
+    expect(x).toEqual({
+      byDomain: {
+        companyId: expect.any(String) as string,
+        dealId: original,
+        founderEmailOnDeal: false,
+        held: false,
+        openClaimDealId: claim,
+      },
+      byEmail: { dealId: claim, submittedAt: recently, held: true },
+    });
+    const z = await findDuplicateCandidates(t.workspace.id, {
+      domainNormalized: "acme.com",
+      founderEmail: "z@evil.com",
+    });
+    expect(z.byDomain?.openClaimDealId).toBeNull();
   });
 
   it("never finds another workspace's company or submission", async () => {

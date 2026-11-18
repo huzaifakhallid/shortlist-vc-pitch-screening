@@ -1,10 +1,12 @@
 import {
   companyDomain,
+  isFundEmail,
   normalizeEmail,
 } from "@shortlist/agents-intake/steps/dedupe";
 import {
   createPendingUpload,
   deletePendingUpload,
+  getFundEmails,
   getPendingUpload,
   submitPitchForm,
   UploadNotConfirmableError,
@@ -99,6 +101,19 @@ export function submitPitch(request: Request, slug: string): Promise<Response> {
       throw new RefusedRequest(400, "This submission was refused.");
     }
     assertIntakeAccepts(body.form);
+    // Intake fails a pitch from the fund's own address or domain (§7.1);
+    // refuse it here so the founder hears it now.
+    if (
+      isFundEmail(
+        normalizeEmail(body.form.founderEmail),
+        await getFundEmails(workspace.id),
+      )
+    ) {
+      throw new RefusedRequest(
+        400,
+        "This email address belongs to the fund. Use the founder's own email.",
+      );
+    }
 
     const upload = await getPendingUpload(workspace.id, body.deckKey);
     if (upload === null) {

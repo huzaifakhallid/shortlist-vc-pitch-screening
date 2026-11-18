@@ -1,0 +1,1 @@
+export { intake } from "./definition";

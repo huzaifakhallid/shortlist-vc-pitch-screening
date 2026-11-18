@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -12,7 +14,7 @@ import {
   uuid,
   type PgColumn,
 } from "drizzle-orm/pg-core";
-import { createdAt } from "./columns";
+import { createdAt, seq } from "./columns";
 import {
   dealStage,
   documentKind,
@@ -68,10 +70,20 @@ export const deal = pgTable(
     // Null until Screening's hidden-text check has run.
     integrityFlag: boolean("integrity_flag"),
     assignedPartnerId: uuid("assigned_partner_id"),
+    // Set by Intake on a possible duplicate (§7.1): the existing deal whose
+    // company domain this pitch states, without the founder email that would
+    // link it. A partner confirms or rejects the link; until then the pitch
+    // is its own deal in NEEDS_REVIEW.
+    possibleDuplicateOfDealId: uuid("possible_duplicate_of_deal_id"),
     createdAt: createdAt(),
   },
   (t) => [
     unique("deal_workspace_id_id_key").on(t.workspaceId, t.id),
+    foreignKey({
+      name: "deal_possible_duplicate_of_fk",
+      columns: [t.workspaceId, t.possibleDuplicateOfDealId],
+      foreignColumns: [t.workspaceId, t.id],
+    }),
     foreignKey({
       name: "deal_company_fk",
       columns: [t.workspaceId, t.companyId],
@@ -100,6 +112,9 @@ export const submission = pgTable(
   "submission",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // Insertion order: the deal's first submission holds its founder contact
+    // (§7.1), and created_at can tie.
+    seq: seq(),
     workspaceId: workspaceId(),
     dealId: uuid("deal_id").notNull(),
     channel: submissionChannel("channel").notNull(),
@@ -108,6 +123,9 @@ export const submission = pgTable(
     founderEmail: text("founder_email").notNull(),
     // Null when the pitch had no deck attached (§7.1 "Needs deck").
     deckObjectKey: text("deck_object_key"),
+    // The verified upload's ETag (§15.3): the worker reads exactly this
+    // object. Set exactly when deck_object_key is.
+    deckEtag: text("deck_etag"),
     deckSha256: text("deck_sha256"),
     rawEmailKey: text("raw_email_key"),
     createdAt: createdAt(),
@@ -115,6 +133,10 @@ export const submission = pgTable(
   (t) => [
     dealRef("submission_deal_fk", t),
     index("submission_deal_id_idx").on(t.dealId),
+    check(
+      "submission_deck_with_etag",
+      sql`(${t.deckObjectKey} is null) = (${t.deckEtag} is null)`,
+    ),
     index("submission_workspace_id_founder_email_idx").on(
       t.workspaceId,
       t.founderEmail,

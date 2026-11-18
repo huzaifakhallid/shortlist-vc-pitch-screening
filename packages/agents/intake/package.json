@@ -3,11 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./steps/dedupe": "./steps/dedupe.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shortlist/agents-shared": "workspace:*",
     "@shortlist/db": "workspace:*",
+    "@shortlist/schemas": "workspace:*",
     "zod": "^4.6.7"
   }
 }

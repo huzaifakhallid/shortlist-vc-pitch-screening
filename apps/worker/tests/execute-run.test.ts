@@ -68,7 +68,7 @@ type TestAgent = AgentDefinition<{ eventId: string }, { score: number }>;
 
 // A test-only agent under a real key (agent_run.agent is an enum of the
 // seven) that §8.2 routes its event to: Intake for email.received, Screening
-// for deal.received. The worker's own registry stays empty. Two steps, then
+// for deal.received. These tests use their own registry. Two steps, then
 // one event.
 function testAgent(options: {
   listensTo: "deal.received" | "email.received";

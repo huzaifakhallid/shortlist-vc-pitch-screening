@@ -254,6 +254,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@shortlist/agents-intake':
+        specifier: workspace:*
+        version: link:../../packages/agents/intake
       '@shortlist/agents-shared':
         specifier: workspace:*
         version: link:../../packages/agents/shared
@@ -279,9 +282,15 @@ importers:
 
   packages/agents/intake:
     dependencies:
+      '@shortlist/agents-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@shortlist/db':
         specifier: workspace:*
         version: link:../../db
+      '@shortlist/schemas':
+        specifier: workspace:*
+        version: link:../../schemas
       zod:
         specifier: ^4.6.7
         version: 4.6.7

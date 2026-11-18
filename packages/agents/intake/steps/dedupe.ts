@@ -1,3 +1,4 @@
+import type { FundEmails } from "@shortlist/schemas";
 import type {
   CompanyDomain,
   DedupeDecision,
@@ -37,6 +38,68 @@ export const SHARED_HOSTS: ReadonlySet<string> = new Set([
   "youtube.com",
   "dropbox.com",
 ]);
+
+// Mailbox providers anyone can sign up to. A member on one of them says
+// nothing about who else uses it, so these never count as the fund's own
+// domains (isFundEmail); the member's exact address still does.
+export const PUBLIC_MAILBOX_DOMAINS: ReadonlySet<string> = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "gmx.com",
+  "zoho.com",
+  "fastmail.com",
+  "hey.com",
+  // Common country variants and regional providers.
+  "hotmail.co.uk",
+  "hotmail.fr",
+  "hotmail.de",
+  "outlook.de",
+  "outlook.fr",
+  "live.co.uk",
+  "yahoo.co.uk",
+  "yahoo.fr",
+  "yahoo.de",
+  "yahoo.co.in",
+  "yahoo.co.jp",
+  "ymail.com",
+  "pm.me",
+  "gmx.de",
+  "gmx.net",
+  "web.de",
+  "mail.com",
+  "yandex.ru",
+  "yandex.com",
+  "mail.ru",
+  "qq.com",
+  "163.com",
+  "126.com",
+  "naver.com",
+]);
+
+// A founder email (normalized) that belongs to the fund: one of its members'
+// exact addresses, or on its intake domain or a member's email domain (or a
+// subdomain of one), public mailbox domains excepted. A pitch from one is a
+// forwarding or setup mistake, never a founder.
+export function isFundEmail(founderEmail: string, fund: FundEmails): boolean {
+  if (fund.addresses.has(founderEmail)) {
+    return true;
+  }
+  const own = new Set(
+    [...fund.domains].filter((d) => !PUBLIC_MAILBOX_DOMAINS.has(d)),
+  );
+  return isWithin(founderEmail.slice(founderEmail.lastIndexOf("@") + 1), own);
+}
 
 // The company's website as stated ("https://www.Acme.com/about", "acme.com")
 // → its host: lowercase (IDN in punycode), no scheme, port, path, query,
@@ -123,32 +186,35 @@ export type DedupeInput = {
   companyDomain: CompanyDomain;
   // Normalized (normalizeEmail).
   founderEmail: string;
-  // The fund's own email domains (its intake address's domain, its members'
-  // domains), passed in by the caller. A pitch from one is a forwarding or
-  // configuration mistake, never a founder.
-  excludedEmailDomains: ReadonlySet<string>;
+  // The fund's own email identity (getFundEmails), passed in by the caller.
+  fundEmails: FundEmails;
   candidates: DuplicateCandidates;
   // The database's clock (the time the candidates were read), never the
   // worker's: submission timestamps are the database's.
   now: Date;
 };
 
+export const FUND_EMAIL_ERROR = "Founder email belongs to the fund";
+
 // The decision from what the dedupe query found:
-// - A founder email on one of the fund's own domains fails, visibly.
+// - A founder email that belongs to the fund (isFundEmail) fails, visibly.
 // - The pitch states a company domain: a domain match links to that
 //   company's latest deal when the founder email is on the company domain or
-//   on an earlier submission of that deal; otherwise it is a possible
+//   on an earlier submission of that deal. Otherwise it is a possible
 //   duplicate for a partner to confirm (someone else could be claiming the
-//   company). No domain match is a new deal: the email rule never overrides
-//   a stated domain.
+//   company), unless this founder email already has an open possible
+//   duplicate of that deal: the pitch joins that held deal. No domain match
+//   is a new deal: the email rule never overrides a stated domain.
 // - No usable company domain: an email match counts when its submission is
 //   at most 90 days before `now` (inclusive; a timestamp after `now` counts).
+// A resubmission says whether its deal is held (a possible duplicate waiting
+// for a partner), which decides its events (steps/receive.ts).
 export function decideDuplicate(input: DedupeInput): DedupeDecision {
   const { candidates, companyDomain: domain, founderEmail, now } = input;
-  const emailDomain = founderEmail.slice(founderEmail.lastIndexOf("@") + 1);
-  if (isWithin(emailDomain, input.excludedEmailDomains)) {
-    throw new Error("Founder email is on one of the fund's own domains");
+  if (isFundEmail(founderEmail, input.fundEmails)) {
+    throw new Error(FUND_EMAIL_ERROR);
   }
+  const emailDomain = founderEmail.slice(founderEmail.lastIndexOf("@") + 1);
 
   if (domain.kind === "domain") {
     const byDomain = candidates.byDomain;
@@ -162,6 +228,18 @@ export function decideDuplicate(input: DedupeInput): DedupeDecision {
           kind: "resubmission",
           dealId: byDomain.dealId,
           matchedBy: "domain",
+          held: byDomain.held,
+        },
+      };
+    }
+    if (byDomain.openClaimDealId !== null) {
+      return {
+        companyDomain: domain,
+        match: {
+          kind: "resubmission",
+          dealId: byDomain.openClaimDealId,
+          matchedBy: "open_claim",
+          held: true,
         },
       };
     }
@@ -185,6 +263,7 @@ export function decideDuplicate(input: DedupeInput): DedupeDecision {
         kind: "resubmission",
         dealId: byEmail.dealId,
         matchedBy: "email",
+        held: byEmail.held,
       },
     };
   }

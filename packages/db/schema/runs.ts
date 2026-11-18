@@ -14,7 +14,7 @@ import {
   uuid,
   type PgColumn,
 } from "drizzle-orm/pg-core";
-import { createdAt } from "./columns";
+import { createdAt, seq } from "./columns";
 import { dealRef } from "./deals";
 import {
   agentKey,
@@ -24,10 +24,6 @@ import {
   runStatus,
 } from "./enums";
 import { configVersion, memberRef, workspace } from "./workspace";
-
-// Insertion order, for append-only logs: created_at can tie within a transaction.
-const seq = () =>
-  bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity();
 
 // Append-only, except the coordinator's fields: processed_at, set once, the
 // dispatch failure record and the spend-cap deferral.
@@ -76,7 +72,9 @@ export const agentRun = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspace.id),
-    // Null for an Intake run: it starts before its deal exists.
+    // Null for an Intake run until it finishes: it starts before its deal
+    // exists, and finishRun sets the deal its narrow path created or linked,
+    // once (§11.1).
     dealId: uuid("deal_id"),
     agent: agentKey("agent").notNull(),
     triggerEventId: uuid("trigger_event_id").notNull(),

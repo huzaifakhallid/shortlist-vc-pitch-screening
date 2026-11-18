@@ -22,6 +22,7 @@ import {
   insertEvent,
   insertStep,
   listSteps,
+  receivePitch,
   startRun,
   withTransaction,
   type RunStep,
@@ -123,15 +124,45 @@ export async function executeRun(
     );
     attempt.signal.throwIfAborted();
     const events = agent.emits(output);
+    const intake = agent.receivesPitch;
     await withTransaction(async (tx) => {
+      if (intake === undefined) {
+        await finishRun(tx, workspaceId, runId, {
+          status: "SUCCEEDED",
+          output,
+          latencyMs: latencyMs(),
+        });
+        for (const event of events) {
+          // The deal comes from the run (§11.1).
+          await insertEvent(tx, workspaceId, { ...event, dealId: run.dealId });
+        }
+        return;
+      }
+      // Intake's narrow path (§11.1): the deal comes from this insert.
+      if (events.length > 0 || run.dealId !== null) {
+        throw new Error(
+          `Run ${runId} (${agent.key}) receives a pitch, so it has no deal yet and emits only through its intake path`,
+        );
+      }
+      // Records the dedupe decision as the run's "dedupe" step (§11.1).
+      const received = await receivePitch(
+        tx,
+        workspaceId,
+        runId,
+        intake.pitch(output),
+        (facts) => intake.decide(output, facts),
+      );
       await finishRun(tx, workspaceId, runId, {
         status: "SUCCEEDED",
         output,
         latencyMs: latencyMs(),
+        receivedDealId: received.dealId,
       });
-      for (const event of events) {
-        // The deal comes from the run (§11.1).
-        await insertEvent(tx, workspaceId, { ...event, dealId: run.dealId });
+      for (const event of intake.emits(received.match)) {
+        await insertEvent(tx, workspaceId, {
+          ...event,
+          dealId: received.dealId,
+        });
       }
     });
   } catch (error) {

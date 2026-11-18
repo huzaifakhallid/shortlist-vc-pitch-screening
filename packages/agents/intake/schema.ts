@@ -1,7 +1,12 @@
+import {
+  intakeMatchSchema,
+  pitchFormSchema,
+  submittedDeckSchema,
+} from "@shortlist/schemas";
 import { z } from "zod";
 
-// Intake's inputs and outputs (§7.1). Only the dedupe step exists so far;
-// the agent itself (definition, prompts, email extraction) is a later slice.
+// Intake's inputs and outputs (§7.1). The form channel only: the email
+// channel (extraction prompt, Postmark hook) is a later slice.
 
 // What the dedupe query found for a pitch (`findDuplicateCandidates`): facts
 // only, the rules in steps/dedupe.ts decide.
@@ -19,17 +24,22 @@ export type CompanyDomain = z.infer<typeof companyDomainSchema>;
 
 // §7.1 "Duplicates": a resubmission links the pitch to an existing deal; a
 // possible duplicate waits for a partner to confirm the link; otherwise
-// Intake creates a new company and deal.
+// Intake creates a new company and deal. The match (intakeMatchSchema) is
+// what the narrow path carries out and records as the "dedupe" step.
 export const dedupeDecisionSchema = z.strictObject({
   companyDomain: companyDomainSchema,
-  match: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("new") }),
-    z.strictObject({
-      kind: z.literal("resubmission"),
-      dealId: z.uuid(),
-      matchedBy: z.enum(["domain", "email"]),
-    }),
-    z.strictObject({ kind: z.literal("possible_duplicate"), dealId: z.uuid() }),
-  ]),
+  match: intakeMatchSchema,
 });
 export type DedupeDecision = z.infer<typeof dedupeDecisionSchema>;
+
+// Intake's output for a form pitch: the form as entered, its normalised
+// company domain and founder email, and the verified deck. The narrow path
+// (receivePitch) creates or links the deal from it.
+export const normalisedPitchSchema = z.strictObject({
+  channel: z.literal("form"),
+  companyDomain: companyDomainSchema,
+  founderEmail: z.string().min(1),
+  form: pitchFormSchema,
+  deck: submittedDeckSchema,
+});
+export type NormalisedPitch = z.infer<typeof normalisedPitchSchema>;

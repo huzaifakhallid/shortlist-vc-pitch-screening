@@ -21,6 +21,7 @@ export {
 export {
   agentRegistry,
   InvalidModelOutputError,
+  MissingInputError,
   MODEL_REQUEST_TIMEOUT_MS,
   ProviderError,
   type AgentContext,
@@ -28,6 +29,7 @@ export {
   type AgentRegistry,
   type AnyAgentDefinition,
   type DealSnapshot,
+  type IntakePath,
   type InstructionPart,
   type LlmClient,
   type LlmPart,

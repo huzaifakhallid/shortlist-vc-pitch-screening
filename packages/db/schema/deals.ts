@@ -59,7 +59,7 @@ export const deal = pgTable(
     workspaceId: workspaceId(),
     companyId: uuid("company_id").notNull(),
     stage: dealStage("stage").notNull(),
-    // Written by Screening; its Zod schema arrives with that agent (milestone 2).
+    // Written by Screening; parsed with dealProfileSchema (@shortlist/schemas).
     profile: jsonb("profile"),
     // Weighted rubric score, 0-100. Null until Screening has scored the deal.
     totalScore: numeric("total_score", {

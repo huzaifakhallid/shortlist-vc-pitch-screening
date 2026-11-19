@@ -10,6 +10,15 @@ export {
   type ActiveConfig,
 } from "./access/config";
 export {
+  getDealDeck,
+  getDealView,
+  listDeals,
+  type DealDeck,
+  type DealSummary,
+  type DealView,
+  type ScreeningRunView,
+} from "./access/dashboard";
+export {
   findDuplicateCandidates,
   getFounderContact,
   type DuplicateCandidates,

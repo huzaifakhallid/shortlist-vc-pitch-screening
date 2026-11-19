@@ -37,6 +37,7 @@ const storage = {
   verifyDeckUpload: vi.fn<DeckStorage["verifyDeckUpload"]>(),
   readDeck: vi.fn<DeckStorage["readDeck"]>(),
   deleteDeck: vi.fn<DeckStorage["deleteDeck"]>(),
+  presignDeckView: vi.fn<DeckStorage["presignDeckView"]>(),
 };
 
 function workspace(synthetic: boolean): db.Workspace {

@@ -92,6 +92,37 @@ describe("presignDeckUpload", () => {
   });
 });
 
+describe("presignDeckView", () => {
+  it("signs a 60-second GET answered as an inline PDF, offline", async () => {
+    const { storage, sent } = storageWith();
+    const key = newDeckKey(WORKSPACE);
+
+    const url = new URL(await storage.presignDeckView(WORKSPACE, key));
+
+    expect(sent).toEqual([]);
+    expect(url.host).toBe(HOST);
+    expect(url.pathname).toBe(`/${key}`);
+    const query = url.searchParams;
+    expect(query.get("X-Amz-Expires")).toBe("60");
+    expect(query.get("X-Amz-SignedHeaders")).toBe("host");
+    expect(query.get("response-content-type")).toBe("application/pdf");
+    expect(query.get("response-cache-control")).toBe("private, no-store");
+    expect(query.get("response-content-disposition")).toBe(
+      'inline; filename="deck.pdf"',
+    );
+    expect(url.toString()).not.toContain("test-secret-access-key");
+  });
+
+  it("refuses another workspace's key", async () => {
+    const { storage } = storageWith();
+    await expect(
+      storage.presignDeckView(WORKSPACE, newDeckKey(OTHER_WORKSPACE)),
+    ).rejects.toThrow(
+      "Storage: object key is not a deck key of this workspace",
+    );
+  });
+});
+
 describe("verifyDeckUpload", () => {
   const size = pdfBytes().length;
   const head: FixtureResponse = {

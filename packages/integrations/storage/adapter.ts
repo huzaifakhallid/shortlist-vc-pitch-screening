@@ -16,6 +16,9 @@ import { assertDeckKey, newDeckKey } from "./keys";
 export const DECK_CONTENT_TYPE = "application/pdf";
 export const MAX_DECK_BYTES = 25 * 1024 * 1024;
 export const UPLOAD_URL_EXPIRY_SECONDS = 300;
+// Viewing a deck in the dashboard (§15.3): a 60-second presigned GET, made
+// after authorization.
+export const VIEW_URL_EXPIRY_SECONDS = 60;
 const PDF_MAGIC = new TextEncoder().encode("%PDF-");
 
 // A presigned PUT. Content-Type, Content-Length and If-None-Match are signed
@@ -72,6 +75,12 @@ export type DeckStorage = {
     sizeBytes: number,
   ): Promise<string>;
   readDeck(workspaceId: string, key: string, etag: string): Promise<Uint8Array>;
+  // A GET URL the browser fetches the deck with, valid for
+  // VIEW_URL_EXPIRY_SECONDS. R2 answers it as an inline PDF whatever the
+  // object's metadata says. No If-Match is signed: objects are written once
+  // (If-None-Match on the upload), and the browser couldn't send one
+  // without a CORS preflight.
+  presignDeckView(workspaceId: string, key: string): Promise<string>;
   deleteDeck(workspaceId: string, key: string): Promise<void>;
 };
 
@@ -186,6 +195,24 @@ export function deckStorage(client: S3Client, bucket: string): DeckStorage {
         throw new Error(`Storage: ${key} is not a PDF`);
       }
       return bytes;
+    },
+
+    async presignDeckView(workspaceId, key) {
+      assertDeckKey(workspaceId, key);
+      // Response header overrides on a presigned GET:
+      // https://developers.cloudflare.com/r2/api/s3/presigned-urls/
+      // Presigning is local signing; no request is made.
+      return getSignedUrl(
+        client,
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ResponseContentType: DECK_CONTENT_TYPE,
+          ResponseContentDisposition: 'inline; filename="deck.pdf"',
+          ResponseCacheControl: "private, no-store",
+        }),
+        { expiresIn: VIEW_URL_EXPIRY_SECONDS },
+      );
     },
 
     async deleteDeck(workspaceId, key) {

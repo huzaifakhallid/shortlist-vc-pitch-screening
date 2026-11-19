@@ -10,10 +10,12 @@ export {
   type InvalidUploadReason,
   MAX_DECK_BYTES,
   UPLOAD_URL_EXPIRY_SECONDS,
+  VIEW_URL_EXPIRY_SECONDS,
   type DeckStorage,
   type DeckUpload,
 } from "./adapter";
 export { IntegrationError } from "../errors";
+export { assertDeckKey } from "./keys";
 
 export function createDeckStorage(env: StorageEnv): DeckStorage {
   return deckStorage(new S3Client(s3ClientConfig(env)), env.R2_BUCKET);

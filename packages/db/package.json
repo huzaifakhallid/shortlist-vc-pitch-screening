@@ -6,7 +6,10 @@
   "exports": {
     ".": "./index.ts",
     "./coordinator": "./access/coordinator.ts",
-    "./demo": "./seed/demo-members.ts"
+    "./demo": "./seed/demo-members.ts",
+    "./demo-decks": "./seed/demo-decks.ts",
+    "./demo-deals": "./seed/demo-deals.ts",
+    "./kestrel-config": "./seed/kestrel-config.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

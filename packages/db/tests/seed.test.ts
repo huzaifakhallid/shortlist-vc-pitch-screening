@@ -1,4 +1,4 @@
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import { db, single } from "../client";
@@ -8,7 +8,17 @@ import {
   getUserByEmail,
   listPartnerIds,
 } from "../index";
-import { configVersion, membership, user, workspace } from "../schema";
+import {
+  agentRun,
+  configVersion,
+  deal,
+  event,
+  membership,
+  stageTransition,
+  user,
+  workspace,
+} from "../schema";
+import { DEMO_DEALS } from "../seed/demo-deals";
 import { DEMO_SLUG } from "../seed/demo-members";
 import { seedDemoWorkspace } from "../seed/seed";
 
@@ -78,6 +88,63 @@ describe("seedDemoWorkspace", () => {
     expect(await rowCount(user)).toBe(4);
     expect(await rowCount(membership)).toBe(4);
     expect(await rowCount(configVersion)).toBe(1);
+    expect(first.dealsAdded).toBe(DEMO_DEALS.length);
+    expect(second.dealsAdded).toBe(0);
+    expect(await rowCount(deal)).toBe(DEMO_DEALS.length);
+  });
+
+  it("seeds the demo deals across stages, with processed events only", async () => {
+    const { workspace: ws } = await seedDemoWorkspace();
+
+    const stages = await db()
+      .select({ stage: deal.stage })
+      .from(deal)
+      .where(eq(deal.workspaceId, ws.id));
+    expect(stages.map((d) => d.stage).toSorted()).toEqual(
+      [
+        "FIRST_CALL",
+        "NEEDS_REVIEW",
+        "OUT_OF_MANDATE",
+        "OUT_OF_MANDATE",
+        "RECEIVED",
+        "RECEIVED",
+        "SCREENED",
+        "SCREENED",
+        "SCREENED",
+      ].toSorted(),
+    );
+    // One Screening run per deal with a deck; none for the deal without.
+    expect(await rowCount(agentRun)).toBe(8);
+    expect(await rowCount(stageTransition)).toBe(1);
+    const unprocessed = (
+      await db().select({ processedAt: event.processedAt }).from(event)
+    ).filter((e) => e.processedAt === null);
+    expect(unprocessed).toEqual([]);
+  });
+
+  it("adds the demo deals to an existing workspace without deals", async () => {
+    await seedDemoWorkspace();
+    await db().delete(stageTransition);
+    await db().delete(agentRun);
+    await db().delete(event);
+    await db().execute(sql`truncate submission, deal, company cascade`);
+
+    const again = await seedDemoWorkspace();
+
+    expect(again.status).toBe("exists");
+    expect(again.dealsAdded).toBe(DEMO_DEALS.length);
+  });
+
+  it("adds no demo deals to an existing kestrel workspace that isn't synthetic", async () => {
+    await createWorkspace({
+      slug: DEMO_SLUG,
+      name: "Kestrel Ventures",
+      intakeAddress: `pitches+${DEMO_SLUG}@in.shortlist.dev`,
+      synthetic: false,
+    });
+
+    await expect(seedDemoWorkspace()).rejects.toThrow(/isn't synthetic/);
+    expect(await rowCount(deal)).toBe(0);
   });
 
   it("fails loudly when an earlier run stopped before saving the config", async () => {

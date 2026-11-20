@@ -4,6 +4,7 @@ import {
   createUser,
   createWorkspace,
   getActiveConfig,
+  getUserByEmail,
   getWorkspaceBySlug,
   saveConfigVersion,
   type ActiveConfig,
@@ -12,24 +13,43 @@ import {
 } from "../index";
 import { DEMO_MEMBERS, DEMO_SLUG, type DemoMemberKey } from "./demo-members";
 import { kestrelConfig } from "./kestrel-config";
+import { seedDemoDeals } from "./seed-deals";
 
 export type SeedResult = {
   status: "created" | "exists";
   workspace: Workspace;
   config: ActiveConfig;
+  // Demo deals added by this run: all of them into a workspace without
+  // deals, none otherwise.
+  dealsAdded: number;
 };
 
 // Creates the Kestrel Ventures demo workspace once. A second run leaves an
 // existing one untouched, after checking it has an active config (a run that
 // failed halfway shows up here instead of being skipped silently). To recover
 // from that locally, recreate the database and run db:migrate and db:seed again.
+// The demo deals are added to a Kestrel workspace that has no deals yet, so
+// a workspace seeded before they existed gets them too.
 export async function seedDemoWorkspace(): Promise<SeedResult> {
   const existing = await getWorkspaceBySlug(DEMO_SLUG);
   if (existing !== null) {
+    // Synthetic deals only ever go into a synthetic workspace (§14.4).
+    if (!existing.synthetic) {
+      throw new Error(
+        `The ${DEMO_SLUG} workspace exists but isn't synthetic, so no demo deals were added; recreate the database and seed again`,
+      );
+    }
+    const config = await getActiveConfig(existing.id);
     return {
       status: "exists",
       workspace: existing,
-      config: await getActiveConfig(existing.id),
+      config,
+      dealsAdded: await seedDemoDeals({
+        workspaceId: existing.id,
+        configVersionId: config.id,
+        members: await existingMembers(),
+        now: new Date(),
+      }),
     };
   }
 
@@ -57,7 +77,18 @@ export async function seedDemoWorkspace(): Promise<SeedResult> {
     }),
     users.leo.id,
   );
-  return { status: "created", workspace, config };
+  const dealsAdded = await seedDemoDeals({
+    workspaceId: workspace.id,
+    configVersionId: config.id,
+    members: {
+      amara: users.amara.id,
+      daniel: users.daniel.id,
+      sana: users.sana.id,
+      leo: users.leo.id,
+    },
+    now: new Date(),
+  });
+  return { status: "created", workspace, config, dealsAdded };
 }
 
 async function addMember(
@@ -67,4 +98,23 @@ async function addMember(
   const user = await createUser({ email: member.email, name: member.name });
   await createMembership(workspaceId, { userId: user.id, role: member.role });
   return user;
+}
+
+// The demo members of an existing Kestrel workspace, by key.
+async function existingMembers(): Promise<Record<DemoMemberKey, string>> {
+  const id = async (key: DemoMemberKey): Promise<string> => {
+    const found = await getUserByEmail(DEMO_MEMBERS[key].email);
+    if (found === null) {
+      throw new Error(
+        `The ${DEMO_SLUG} workspace exists but its demo member ${DEMO_MEMBERS[key].email} doesn't; recreate the database and seed again`,
+      );
+    }
+    return found.id;
+  };
+  return {
+    amara: await id("amara"),
+    daniel: await id("daniel"),
+    sana: await id("sana"),
+    leo: await id("leo"),
+  };
 }

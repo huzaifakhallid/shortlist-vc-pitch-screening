@@ -17,8 +17,16 @@ const item =
   "-mb-px flex h-full items-center border-b-2 border-transparent font-medium";
 
 export function NavLinks() {
-  const pathname = usePathname();
+  return <NavItems pathname={usePathname()} />;
+}
 
+// The links before the path is known (prerendered shell of a dynamic
+// route): none is marked active until NavLinks streams in.
+export function NavLinksFallback() {
+  return <NavItems pathname={null} />;
+}
+
+function NavItems({ pathname }: { pathname: string | null }) {
   return (
     <nav aria-label="Main" className="flex h-full gap-6">
       {ITEMS.map(({ label, href }) => {
@@ -33,7 +41,9 @@ export function NavLinks() {
             </span>
           );
         }
-        const active = pathname === href || pathname.startsWith(href + "/");
+        const active =
+          pathname !== null &&
+          (pathname === href || pathname.startsWith(href + "/"));
         return (
           <Link
             key={label}

@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "decks:generate": "node scripts/generate-synthetic-decks.ts"
   },
   "dependencies": {
     "@shortlist/agents-intake": "workspace:*",
@@ -19,6 +20,7 @@
     "lucide-react": "^1.70.0",
     "next": "16.4.5",
     "next-auth": "5.0.0-beta.32",
+    "pdfjs-dist": "^6.5.438",
     "radix-ui": "^1.8.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
